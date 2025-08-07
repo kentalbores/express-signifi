@@ -1,0 +1,172 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.achievement (
+  achievement_id integer NOT NULL DEFAULT nextval('achievement_achievement_id_seq'::regclass),
+  user_id integer,
+  type character varying,
+  description text,
+  awarded_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT achievement_pkey PRIMARY KEY (achievement_id),
+  CONSTRAINT achievement_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.activity (
+  activity_id integer NOT NULL DEFAULT nextval('activity_activity_id_seq'::regclass),
+  user_id integer,
+  lesson_id integer,
+  status character varying CHECK (status::text = ANY (ARRAY['started'::character varying, 'completed'::character varying]::text[])),
+  updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT activity_pkey PRIMARY KEY (activity_id),
+  CONSTRAINT activity_lesson_id_fkey FOREIGN KEY (lesson_id) REFERENCES public.lesson(lesson_id),
+  CONSTRAINT activity_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.adminactivity (
+  activity_id integer NOT NULL DEFAULT nextval('adminactivity_activity_id_seq'::regclass),
+  admin_id integer,
+  action text,
+  target_table character varying,
+  target_id integer,
+  timestamp timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT adminactivity_pkey PRIMARY KEY (activity_id),
+  CONSTRAINT adminactivity_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.attempt (
+  attempt_id integer NOT NULL DEFAULT nextval('attempt_attempt_id_seq'::regclass),
+  user_id integer,
+  lesson_id integer,
+  score integer,
+  completed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT attempt_pkey PRIMARY KEY (attempt_id),
+  CONSTRAINT attempt_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.useraccount(user_id),
+  CONSTRAINT attempt_lesson_id_fkey FOREIGN KEY (lesson_id) REFERENCES public.lesson(lesson_id)
+);
+CREATE TABLE public.course (
+  course_id integer NOT NULL DEFAULT nextval('course_course_id_seq'::regclass),
+  educator_id integer,
+  institution_id integer,
+  title character varying,
+  description text,
+  price numeric DEFAULT 0.00,
+  is_published boolean DEFAULT false,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT course_pkey PRIMARY KEY (course_id),
+  CONSTRAINT course_institution_id_fkey FOREIGN KEY (institution_id) REFERENCES public.institution(institution_id),
+  CONSTRAINT course_educator_id_fkey FOREIGN KEY (educator_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.coursemoderation (
+  moderation_id integer NOT NULL DEFAULT nextval('coursemoderation_moderation_id_seq'::regclass),
+  course_id integer,
+  admin_id integer,
+  status character varying CHECK (status::text = ANY (ARRAY['approved'::character varying, 'rejected'::character varying, 'flagged'::character varying]::text[])),
+  reviewed_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT coursemoderation_pkey PRIMARY KEY (moderation_id),
+  CONSTRAINT coursemoderation_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES public.useraccount(user_id),
+  CONSTRAINT coursemoderation_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.course(course_id)
+);
+CREATE TABLE public.coursemodule (
+  module_id integer NOT NULL DEFAULT nextval('coursemodule_module_id_seq'::regclass),
+  course_id integer,
+  title character varying NOT NULL,
+  description text,
+  CONSTRAINT coursemodule_pkey PRIMARY KEY (module_id),
+  CONSTRAINT coursemodule_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.course(course_id)
+);
+CREATE TABLE public.educatorverification (
+  verification_id integer NOT NULL DEFAULT nextval('educatorverification_verification_id_seq'::regclass),
+  educator_id integer,
+  institution_id integer,
+  status character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'approved'::character varying, 'rejected'::character varying]::text[])),
+  submitted_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT educatorverification_pkey PRIMARY KEY (verification_id),
+  CONSTRAINT educatorverification_educator_id_fkey FOREIGN KEY (educator_id) REFERENCES public.useraccount(user_id),
+  CONSTRAINT educatorverification_institution_id_fkey FOREIGN KEY (institution_id) REFERENCES public.institution(institution_id)
+);
+CREATE TABLE public.enrollment (
+  enroll_id integer NOT NULL DEFAULT nextval('enrollment_enroll_id_seq'::regclass),
+  learner_id integer,
+  course_id integer,
+  enrolled_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  status character varying DEFAULT 'ongoing'::character varying,
+  CONSTRAINT enrollment_pkey PRIMARY KEY (enroll_id),
+  CONSTRAINT enrollment_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.course(course_id),
+  CONSTRAINT enrollment_learner_id_fkey FOREIGN KEY (learner_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.feedback (
+  feedback_id integer NOT NULL DEFAULT nextval('feedback_feedback_id_seq'::regclass),
+  course_id integer,
+  rating integer CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT feedback_pkey PRIMARY KEY (feedback_id),
+  CONSTRAINT feedback_course_id_fkey FOREIGN KEY (course_id) REFERENCES public.course(course_id)
+);
+CREATE TABLE public.gameattempt (
+  game_attempt_id integer NOT NULL DEFAULT nextval('gameattempt_game_attempt_id_seq'::regclass),
+  user_id integer,
+  game_id integer,
+  score integer,
+  played_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT gameattempt_pkey PRIMARY KEY (game_attempt_id),
+  CONSTRAINT gameattempt_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.useraccount(user_id),
+  CONSTRAINT gameattempt_game_id_fkey FOREIGN KEY (game_id) REFERENCES public.minigame(game_id)
+);
+CREATE TABLE public.institution (
+  institution_id integer NOT NULL DEFAULT nextval('institution_institution_id_seq'::regclass),
+  name character varying NOT NULL,
+  email character varying NOT NULL UNIQUE,
+  contact_number character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT institution_pkey PRIMARY KEY (institution_id)
+);
+CREATE TABLE public.lesson (
+  lesson_id integer NOT NULL DEFAULT nextval('lesson_lesson_id_seq'::regclass),
+  module_id integer,
+  title character varying,
+  video_url text,
+  lesson_type character varying CHECK (lesson_type::text = ANY (ARRAY['video'::character varying, 'quiz'::character varying, 'drill'::character varying]::text[])),
+  CONSTRAINT lesson_pkey PRIMARY KEY (lesson_id),
+  CONSTRAINT lesson_module_id_fkey FOREIGN KEY (module_id) REFERENCES public.coursemodule(module_id)
+);
+CREATE TABLE public.lessonmaterial (
+  material_id integer NOT NULL DEFAULT nextval('lessonmaterial_material_id_seq'::regclass),
+  lesson_id integer,
+  file_url text,
+  type character varying,
+  CONSTRAINT lessonmaterial_pkey PRIMARY KEY (material_id),
+  CONSTRAINT lessonmaterial_lesson_id_fkey FOREIGN KEY (lesson_id) REFERENCES public.lesson(lesson_id)
+);
+CREATE TABLE public.minigame (
+  game_id integer NOT NULL DEFAULT nextval('minigame_game_id_seq'::regclass),
+  name character varying,
+  description text,
+  CONSTRAINT minigame_pkey PRIMARY KEY (game_id)
+);
+CREATE TABLE public.notification (
+  notification_id integer NOT NULL DEFAULT nextval('notification_notification_id_seq'::regclass),
+  user_id integer,
+  title character varying,
+  message text,
+  link character varying,
+  is_read boolean DEFAULT false,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT notification_pkey PRIMARY KEY (notification_id),
+  CONSTRAINT notification_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.useraccount(user_id)
+);
+CREATE TABLE public.transaction (
+  transaction_id integer NOT NULL,
+  method character varying,
+  amount numeric,
+  status character varying CHECK (status::text = ANY (ARRAY['pending'::character varying, 'completed'::character varying, 'failed'::character varying]::text[])),
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT transaction_pkey PRIMARY KEY (transaction_id),
+  CONSTRAINT transaction_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.enrollment(enroll_id)
+);
+CREATE TABLE public.useraccount (
+  user_id integer NOT NULL DEFAULT nextval('useraccount_user_id_seq'::regclass),
+  email character varying NOT NULL UNIQUE,
+  password character varying NOT NULL,
+  role character varying NOT NULL CHECK (role::text = ANY (ARRAY['learner'::character varying, 'educator'::character varying, 'admin'::character varying, 'institution'::character varying]::text[])),
+  full_name character varying,
+  created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT useraccount_pkey PRIMARY KEY (user_id)
+);
