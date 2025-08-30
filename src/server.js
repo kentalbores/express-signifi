@@ -25,23 +25,16 @@ const adminactivityRoutes = require('./routes/adminactivity/adminactivityRoutes'
 // Middleware
 app.use(express.json());
 
-// CORS configuration
-app.use(cors({
-  origin: true, // reflect request origin for development
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
-}));
-// Express 5 compatible preflight handler
-app.options(/.*/, cors({
-  origin: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
-}));
+// CORS configuration (permissive for development)
+app.use(cors());
+app.options('*', cors());
 
 // Test route
 app.get('/test', (req, res) => {
+    res.send('hello world');
+});
+
+app.get('/test2', (req, res) => {
     res.send('hello world');
 });
 

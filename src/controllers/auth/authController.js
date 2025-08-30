@@ -166,3 +166,48 @@ module.exports = {
   register,
   me
 };
+
+// --- Educator Registration ---
+/**
+ * POST /api/auth/register-educator
+ * body: { email: string, password: string, full_name?: string }
+ * Creates a user with role 'educator' and returns token + user
+ */
+module.exports.registerEducator = async (req, res) => {
+  try {
+    const { email, password, full_name } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    const result = await sql`
+      INSERT INTO useraccount (email, password, role, full_name)
+      VALUES (${email}, ${hashedPassword}, 'educator', ${full_name || null})
+      RETURNING user_id, email, role, full_name, created_at
+    `;
+
+    const user = result[0];
+    const token = generateToken(user);
+
+    res.status(201).json({
+      message: 'Educator registered successfully',
+      token,
+      user: {
+        user_id: user.user_id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Error during educator registration:', error);
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
