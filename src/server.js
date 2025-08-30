@@ -26,7 +26,12 @@ const adminactivityRoutes = require('./routes/adminactivity/adminactivityRoutes'
 app.use(express.json());
 
 // CORS configuration (permissive for development)
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: false
+}));
 
 
 // Test route
