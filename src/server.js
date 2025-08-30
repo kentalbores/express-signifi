@@ -27,7 +27,7 @@ app.use(express.json());
 
 // CORS configuration (permissive for development)
 app.use(cors());
-app.options('*', cors());
+
 
 // Test route
 app.get('/test', (req, res) => {
