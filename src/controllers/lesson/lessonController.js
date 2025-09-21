@@ -3,20 +3,22 @@ const sql = require('../../config/database');
 // Create a new lesson
 const createLesson = async (req, res) => {
     try {
-        const { module_id, title, video_url, lesson_type } = req.body;
+        const { module_id, title, video_url, lesson_type, content, order_index } = req.body;
         if (!module_id || isNaN(module_id) || !title || !lesson_type) {
             return res.status(400).json({ error: 'Missing required fields: module_id (number), title and lesson_type are required' });
         }
 
-        const validTypes = ['video', 'quiz', 'drill'];
+        const validTypes = ['video', 'quiz', 'assignment', 'reading', 'interactive', 'live_session'];
         if (!validTypes.includes(lesson_type)) {
-            return res.status(400).json({ error: 'Invalid lesson_type. Must be one of: video, quiz, drill' });
+            return res.status(400).json({ error: 'Invalid lesson_type. Must be one of: video, quiz, assignment, reading, interactive, live_session' });
         }
 
+        const resolvedOrderIndex = (order_index !== undefined && !isNaN(order_index)) ? order_index : 1;
+
         const result = await sql`
-            INSERT INTO lesson (module_id, title, video_url, lesson_type)
-            VALUES (${module_id}, ${title}, ${video_url || null}, ${lesson_type})
-            RETURNING lesson_id, module_id, title, video_url, lesson_type
+            INSERT INTO lesson (module_id, title, content, video_url, lesson_type, order_index)
+            VALUES (${module_id}, ${title}, ${content || null}, ${video_url || null}, ${lesson_type}, ${resolvedOrderIndex})
+            RETURNING lesson_id, module_id, title, content, video_url, lesson_type, order_index
         `;
         res.status(201).json({ message: 'Lesson created successfully', lesson: result[0] });
     } catch (error) {
@@ -35,7 +37,7 @@ const createLesson = async (req, res) => {
 const getAllLessons = async (req, res) => {
     try {
         const { module_id } = req.query;
-        let query = 'SELECT lesson_id, module_id, title, video_url, lesson_type FROM lesson';
+        let query = 'SELECT lesson_id, module_id, title, content, video_url, lesson_type, order_index FROM lesson';
         const values = [];
         if (module_id) {
             query += ' WHERE module_id = $1';
@@ -57,7 +59,7 @@ const getLessonById = async (req, res) => {
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid lesson ID' });
 
         const result = await sql`
-            SELECT lesson_id, module_id, title, video_url, lesson_type FROM lesson WHERE lesson_id = ${id}
+            SELECT lesson_id, module_id, title, content, video_url, lesson_type, order_index FROM lesson WHERE lesson_id = ${id}
         `;
         if (result.length === 0) return res.status(404).json({ error: 'Lesson not found' });
         res.status(200).json({ message: 'Lesson retrieved successfully', lesson: result[0] });
@@ -71,25 +73,27 @@ const getLessonById = async (req, res) => {
 const updateLesson = async (req, res) => {
     try {
         const { id } = req.params;
-        const { module_id, title, video_url, lesson_type } = req.body;
+        const { module_id, title, content, video_url, lesson_type, order_index } = req.body;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid lesson ID' });
 
-        const current = await sql`SELECT module_id, title, video_url, lesson_type FROM lesson WHERE lesson_id = ${id}`;
+        const current = await sql`SELECT module_id, title, content, video_url, lesson_type, order_index FROM lesson WHERE lesson_id = ${id}`;
         if (current.length === 0) return res.status(404).json({ error: 'Lesson not found' });
 
         const updatedModuleId = module_id !== undefined ? module_id : current[0].module_id;
         const updatedTitle = title !== undefined ? title : current[0].title;
+        const updatedContent = content !== undefined ? content : current[0].content;
         const updatedVideo = video_url !== undefined ? video_url : current[0].video_url;
         const updatedType = lesson_type !== undefined ? lesson_type : current[0].lesson_type;
+        const updatedOrder = order_index !== undefined ? order_index : current[0].order_index;
 
-        if (updatedType && !['video', 'quiz', 'drill'].includes(updatedType)) {
-            return res.status(400).json({ error: 'Invalid lesson_type. Must be one of: video, quiz, drill' });
+        if (updatedType && !['video', 'quiz', 'assignment', 'reading', 'interactive', 'live_session'].includes(updatedType)) {
+            return res.status(400).json({ error: 'Invalid lesson_type. Must be one of: video, quiz, assignment, reading, interactive, live_session' });
         }
 
         const result = await sql`
-            UPDATE lesson SET module_id = ${updatedModuleId}, title = ${updatedTitle}, video_url = ${updatedVideo}, lesson_type = ${updatedType}
+            UPDATE lesson SET module_id = ${updatedModuleId}, title = ${updatedTitle}, content = ${updatedContent}, video_url = ${updatedVideo}, lesson_type = ${updatedType}, order_index = ${updatedOrder}
             WHERE lesson_id = ${id}
-            RETURNING lesson_id, module_id, title, video_url, lesson_type
+            RETURNING lesson_id, module_id, title, content, video_url, lesson_type, order_index
         `;
         res.status(200).json({ message: 'Lesson updated successfully', lesson: result[0] });
     } catch (error) {

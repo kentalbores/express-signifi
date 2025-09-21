@@ -1,0 +1,262 @@
+# Seed script: one POST per table (ordered to satisfy foreign keys)
+# IMPORTANT: Replace numeric IDs (like 2, 3, 1) with the actual values returned by your API.
+# Some tables have no public POST endpoint or current controllers don’t match the DB schema; those are skipped with notes.
+
+# 1) Users — create learner, educator, super admin base accounts
+curl -X POST 'http://localhost:5000/api/auth/register' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "learner1@example.com",
+    "password": "StrongPass!123",
+    "first_name": "Learner",
+    "last_name": "One"
+  }'
+# Save: learner_user_id = <response.user.user_id>
+
+curl -X POST 'http://localhost:5000/api/auth/register-educator' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "educator1@example.com",
+    "password": "StrongPass!123",
+    "first_name": "Educator",
+    "last_name": "One"
+  }'
+# Save: educator_user_id = <response.user.user_id>
+
+curl -X POST 'http://localhost:5000/api/users' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "superadmin1@example.com",
+    "password": "StrongPass!123",
+    "first_name": "Super",
+    "last_name": "Admin"
+  }'
+# Save: super_admin_user_id = <response.user.user_id>
+
+
+# 2) Super Admin — attach superadmin role to that user
+curl -X POST 'http://localhost:5000/api/super-admins' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_super_admin_user_id
+  }'
+
+# 3) Institution — requires slug
+curl -X POST 'http://localhost:5000/api/institutions' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "SigniFi University",
+    "slug": "signifi-university",
+    "email": "contact@signifi-univ.edu",
+    "contact_number": "+1-555-0000",
+    "address": "123 Campus Ave",
+    "city": "Quezon City",
+    "country": "PH",
+    "website": "https://signifi-univ.edu"
+  }'
+# Save: institution_id = <response.institution.institution_id>
+
+# 4) Educator (manual create) — SKIPPED
+# Reason: register-educator already created an educator row; posting again for the same user would fail/duplicate.
+# If you need to create a separate educator profile for another user, send nulls for optionals to avoid UNDEFINED_VALUE:
+# curl -X POST 'http://localhost:5000/api/educators' \
+#   -H 'Content-Type: application/json' \
+#   -d '{
+#     "user_id": 2,
+#     "institution_id": null,
+#     "employee_id": null,
+#     "title": "Senior Instructor",
+#     "bio": null,
+#     "specialization": "FSL Basics",
+#     "qualifications": null,
+#     "years_experience": 0,
+#     "verification_documents": {},
+#     "payout_method": "bank_transfer",
+#     "payout_details": {}
+#   }'
+
+# 4) Course Category
+curl -X POST 'http://localhost:5000/api/course-categories' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Sign Language",
+    "slug": "sign-language",
+    "description": "All things sign language",
+    "icon_url": null,
+    "color": null,
+    "is_active": true
+  }'
+# Save: category_id = <response.data.category_id>
+
+# 5) Course — use educator_user_id; institution_id optional
+curl -X POST 'http://localhost:5000/api/courses' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "educator_id": REPLACE_educator_user_id,
+    "category_id": REPLACE_category_id,
+    "title": "Intro to FSL",
+    "slug": "intro-to-fsl",
+    "short_description": "Basics of Filipino Sign Language",
+    "price": 0,
+    "is_published": true
+  }'
+# Save: course_id = <response.course.course_id>
+
+# 6) Course Module — ties to course_id
+curl -X POST 'http://localhost:5000/api/modules' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "course_id": REPLACE_course_id,
+    "title": "Module 1: Alphabet",
+    "description": "Learn the FSL alphabet"
+  }'
+# Save: module_id = <response.module.module_id>
+
+# 7) Lesson — ties to module_id
+curl -X POST 'http://localhost:5000/api/lessons' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "module_id": REPLACE_module_id,
+    "title": "Lesson 1: A to E",
+    "lesson_type": "video",
+    "content": "Video content link here",
+    "video_url": "https://example.com/video.mp4"
+  }'
+# Save: lesson_id = <response.lesson.lesson_id>
+
+# 8) Minigame — standalone
+curl -X POST 'http://localhost:5000/api/minigames' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Sign Bingo",
+    "category": "bingo",
+    "difficulty_level": "easy",
+    "points_reward": 50
+  }'
+# Save: minigame_id = <response.game.game_id>
+
+# 10) Learner — SKIPPED
+# Reason: learner row already created by /api/auth/register.
+# If you need to create a separate learner profile, use POST /api/learner with a different user_id.
+
+# 10) Enrollment — ties learner to course
+curl -X POST 'http://localhost:5000/api/enrollments' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "learner_id": REPLACE_learner_user_id,
+    "course_id": REPLACE_course_id,
+    "status": "active"
+  }'
+# Save: enrollment_id = <response.enrollment.enroll_id>
+
+# 11) Learning Activity — ties user, lesson, enrollment
+curl -X POST 'http://localhost:5000/api/activities' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "lesson_id": REPLACE_lesson_id,
+    "enrollment_id": REPLACE_enrollment_id,
+    "status": "started",
+    "progress_percentage": 5,
+    "time_spent_seconds": 120,
+    "video_watch_time_seconds": 110,
+    "last_position_seconds": 110
+  }'
+
+# 12) Quiz Attempt — ties user, lesson, enrollment
+curl -X POST 'http://localhost:5000/api/attempts' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "lesson_id": REPLACE_lesson_id,
+    "enrollment_id": REPLACE_enrollment_id,
+    "answers": {"q1":"a"},
+    "score": 8,
+    "max_score": 10,
+    "time_taken_seconds": 120
+  }'
+
+# 13) Game Attempt — ties user, minigame
+curl -X POST 'http://localhost:5000/api/game-attempts' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "game_id": REPLACE_minigame_id,
+    "score": 1200
+  }'
+
+# 14) Notification — ties to user (template optional)
+curl -X POST 'http://localhost:5000/api/notifications' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "title": "Welcome!",
+    "message": "Thanks for joining SigniFi",
+    "action_url": "/dashboard",
+    "type": "general",
+    "is_read": false
+  }'
+
+# 15) Feedback (course_review)
+curl -X POST 'http://localhost:5000/api/feedback' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "course_id": REPLACE_course_id,
+    "user_id": REPLACE_learner_user_id,
+    "enrollment_id": REPLACE_enrollment_id,
+    "rating": 5,
+    "comment": "Great intro!"
+  }'
+
+# 16) User Achievement — requires an existing achievement_definition row (id=1). If not present, skip.
+curl -X POST 'http://localhost:5000/api/achievements' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "achievement_def_id": 1,
+    "progress_data": {"progress": 100},
+    "is_completed": true,
+    "points_earned": 100
+  }'
+
+# 17) Course Moderation — needs an existing superadmin and course
+curl -X POST 'http://localhost:5000/api/course-moderations' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "course_id": REPLACE_course_id,
+    "admin_id": REPLACE_super_admin_user_id,
+    "status": "approved",
+    "comments": "Looks good"
+  }'
+
+# 18) Admin Activity Log — uses /api/admin-activities (admin_activity_log)
+curl -X POST 'http://localhost:5000/api/admin-activities' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "admin_id": REPLACE_super_admin_user_id,
+    "action": "approve_course",
+    "target_table": "course",
+    "target_id": REPLACE_course_id
+  }'
+
+# 19) Assignment Submission — ties user, lesson, enrollment
+curl -X POST 'http://localhost:5000/api/assignment-submissions' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_learner_user_id,
+    "lesson_id": REPLACE_lesson_id,
+    "enrollment_id": REPLACE_enrollment_id,
+    "submission_text": "My assignment answer",
+    "status": "submitted"
+  }'
+
+# 20) Institution Admin — requires institution and super_admin_user_id
+curl -X POST 'http://localhost:5000/api/institution-admins' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "user_id": REPLACE_super_admin_user_id,
+    "institution_id": REPLACE_institution_id,
+    "contact_email": "admin@signifi-univ.edu",
+    "department": "Academics",
+    "role_title": "Institution Admin"
+  }'

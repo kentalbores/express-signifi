@@ -8,10 +8,11 @@ const createEnrollment = async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields: learner_id and course_id must be numbers' });
         }
 
+        const normalizedStatus = status || 'active';
         const result = await sql`
             INSERT INTO enrollment (learner_id, course_id, status)
-            VALUES (${learner_id}, ${course_id}, ${status || 'ongoing'})
-            RETURNING enroll_id, learner_id, course_id, status, enrolled_at
+            VALUES (${learner_id}, ${course_id}, ${normalizedStatus})
+            RETURNING enrollment_id as enroll_id, learner_id, course_id, status, enrolled_at
         `;
         res.status(201).json({ message: 'Enrollment created successfully', enrollment: result[0] });
     } catch (error) {
@@ -30,8 +31,8 @@ const getAllEnrollments = async (req, res) => {
     try {
         const { learner_id, course_id } = req.query;
         let query = `
-            SELECT e.enroll_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
-                   u.full_name AS learner_name, c.title AS course_title
+            SELECT e.enrollment_id as enroll_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
+                   (u.first_name || ' ' || u.last_name) AS learner_name, c.title AS course_title
             FROM enrollment e
             LEFT JOIN useraccount u ON e.learner_id = u.user_id
             LEFT JOIN course c ON e.course_id = c.course_id`;
@@ -55,7 +56,7 @@ const getEnrollmentById = async (req, res) => {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
         const result = await sql`
-            SELECT enroll_id, learner_id, course_id, status, enrolled_at FROM enrollment WHERE enroll_id = ${id}
+            SELECT enrollment_id as enroll_id, learner_id, course_id, status, enrolled_at FROM enrollment WHERE enrollment_id = ${id}
         `;
         if (result.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
         res.status(200).json({ message: 'Enrollment retrieved successfully', enrollment: result[0] });
@@ -72,7 +73,7 @@ const updateEnrollment = async (req, res) => {
         const { learner_id, course_id, status } = req.body;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
 
-        const current = await sql`SELECT learner_id, course_id, status FROM enrollment WHERE enroll_id = ${id}`;
+        const current = await sql`SELECT learner_id, course_id, status FROM enrollment WHERE enrollment_id = ${id}`;
         if (current.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
 
         const updatedLearnerId = learner_id !== undefined ? learner_id : current[0].learner_id;
@@ -81,8 +82,8 @@ const updateEnrollment = async (req, res) => {
 
         const result = await sql`
             UPDATE enrollment SET learner_id = ${updatedLearnerId}, course_id = ${updatedCourseId}, status = ${updatedStatus}
-            WHERE enroll_id = ${id}
-            RETURNING enroll_id, learner_id, course_id, status, enrolled_at
+            WHERE enrollment_id = ${id}
+            RETURNING enrollment_id as enroll_id, learner_id, course_id, status, enrolled_at
         `;
         res.status(200).json({ message: 'Enrollment updated successfully', enrollment: result[0] });
     } catch (error) {
@@ -99,7 +100,7 @@ const deleteEnrollment = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
-        const result = await sql`DELETE FROM enrollment WHERE enroll_id = ${id} RETURNING enroll_id`;
+        const result = await sql`DELETE FROM enrollment WHERE enrollment_id = ${id} RETURNING enrollment_id as enroll_id`;
         if (result.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
         res.status(200).json({ message: 'Enrollment deleted successfully' });
     } catch (error) {

@@ -3,12 +3,33 @@ const sql = require('../../config/database');
 // Create a new course
 const createCourse = async (req, res) => {
     try {
-        const { educator_id, institution_id, title, description, price, is_published } = req.body;
+        const { 
+            educator_id, 
+            institution_id, 
+            category_id,
+            title, 
+            slug,
+            short_description,
+            description, 
+            thumbnail_image_url,
+            promo_video_url,
+            price, 
+            discounted_price,
+            currency = 'USD',
+            difficulty_level,
+            estimated_duration_hours,
+            language = 'en',
+            requirements,
+            what_you_will_learn,
+            target_audience,
+            is_published = false,
+            is_featured = false
+        } = req.body;
 
         // Validate required fields
-        if (!educator_id || !title) {
+        if (!educator_id || !title || !slug) {
             return res.status(400).json({
-                error: 'Missing required fields: educator_id and title are required'
+                error: 'Missing required fields: educator_id, title, and slug are required'
             });
         }
 
@@ -25,6 +46,12 @@ const createCourse = async (req, res) => {
             });
         }
 
+        if (category_id && isNaN(category_id)) {
+            return res.status(400).json({
+                error: 'category_id must be a valid number'
+            });
+        }
+
         // Validate price if provided
         if (price && (isNaN(price) || price < 0)) {
             return res.status(400).json({
@@ -32,11 +59,33 @@ const createCourse = async (req, res) => {
             });
         }
 
+        // Validate difficulty level if provided
+        if (difficulty_level) {
+            const validLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
+            if (!validLevels.includes(difficulty_level)) {
+                return res.status(400).json({
+                    error: 'Invalid difficulty_level. Must be one of: beginner, intermediate, advanced, expert'
+                });
+            }
+        }
+
         // Insert course into database
         const result = await sql`
-            INSERT INTO course (educator_id, institution_id, title, description, price, is_published)
-            VALUES (${educator_id}, ${institution_id || null}, ${title}, ${description || null}, ${price || 0.00}, ${is_published || false})
-            RETURNING course_id, educator_id, institution_id, title, description, price, is_published, created_at
+            INSERT INTO course (
+                educator_id, institution_id, category_id, title, slug, short_description,
+                description, thumbnail_image_url, promo_video_url, price, discounted_price,
+                currency, difficulty_level, estimated_duration_hours, language, requirements,
+                what_you_will_learn, target_audience, is_published, is_featured
+            )
+            VALUES (
+                ${educator_id}, ${institution_id || null}, ${category_id || null}, ${title}, 
+                ${slug}, ${short_description || null}, ${description || null}, 
+                ${thumbnail_image_url || null}, ${promo_video_url || null}, ${price || 0.00}, 
+                ${discounted_price || null}, ${currency}, ${difficulty_level || null}, 
+                ${estimated_duration_hours || null}, ${language}, ${requirements || null},
+                ${what_you_will_learn || null}, ${target_audience || null}, ${is_published}, ${is_featured}
+            )
+            RETURNING *
         `;
 
         const course = result[0];
@@ -49,22 +98,33 @@ const createCourse = async (req, res) => {
     } catch (error) {
         console.error('Error creating course:', error);
         
+        // Handle unique constraint violations
+        if (error.code === '23505') {
+            return res.status(400).json({
+                error: 'Course with this slug already exists'
+            });
+        }
+        
         // Handle foreign key constraint violations
         if (error.code === '23503') {
-            // Check constraint name in detail message if constraint property is not available
-            if (error.constraint === 'course_educator_id_fkey' || 
+            if (error.constraint === 'course_educator_fkey' || 
                 (error.detail && error.detail.includes('educator_id'))) {
                 return res.status(400).json({
                     error: 'Invalid educator_id: educator does not exist'
                 });
             }
-            if (error.constraint === 'course_institution_id_fkey' || 
+            if (error.constraint === 'course_institution_fkey' || 
                 (error.detail && error.detail.includes('institution_id'))) {
                 return res.status(400).json({
                     error: 'Invalid institution_id: institution does not exist'
                 });
             }
-            // Generic foreign key error if we can't determine which field
+            if (error.constraint === 'course_category_fkey' || 
+                (error.detail && error.detail.includes('category_id'))) {
+                return res.status(400).json({
+                    error: 'Invalid category_id: category does not exist'
+                });
+            }
             return res.status(400).json({
                 error: 'Foreign key constraint violation: Referenced record does not exist'
             });
@@ -85,7 +145,7 @@ const getAllCourses = async (req, res) => {
         let baseQuery = `
             SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
                    c.price, c.is_published, c.created_at,
-                   u.full_name as educator_name,
+                   (u.first_name || ' ' || u.last_name) as educator_name,
                    i.name as institution_name
             FROM course c
             LEFT JOIN useraccount u ON c.educator_id = u.user_id
@@ -144,7 +204,7 @@ const getCourseById = async (req, res) => {
         const result = await sql`
             SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
                    c.price, c.is_published, c.created_at,
-                   u.full_name as educator_name, u.email as educator_email,
+                   (u.first_name || ' ' || u.last_name) as educator_name, u.email as educator_email,
                    i.name as institution_name, i.email as institution_email
             FROM course c
             LEFT JOIN useraccount u ON c.educator_id = u.user_id

@@ -10,8 +10,7 @@ function generateToken(user) {
   return jwt.sign(
     {
       user_id: user.user_id,
-      email: user.email,
-      role: user.role
+      email: user.email
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -31,7 +30,7 @@ const login = async (req, res) => {
 
     // Find user by email
     const users = await sql`
-      SELECT user_id, email, password, role, full_name, created_at
+      SELECT user_id, email, password, first_name, last_name, created_at
       FROM useraccount
       WHERE email = ${email}
     `;
@@ -74,7 +73,7 @@ const login = async (req, res) => {
 // Learner registration
 const register = async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { email, password, full_name, first_name, last_name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -86,19 +85,28 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Derive names
+    let firstName = first_name || null;
+    let lastName = last_name || null;
+    if ((!firstName || !lastName) && full_name) {
+      const parts = String(full_name).trim().split(/\s+/);
+      firstName = firstName || parts.shift() || null;
+      lastName = lastName || (parts.length ? parts.join(' ') : null);
+    }
+
     // Create user account
     const result = await sql`
-      INSERT INTO useraccount (email, password, role, full_name)
-      VALUES (${email}, ${hashedPassword}, 'learner', ${full_name || null})
-      RETURNING user_id, email, role, full_name, created_at
+      INSERT INTO useraccount (email, password, first_name, last_name)
+      VALUES (${email}, ${hashedPassword}, ${firstName}, ${lastName})
+      RETURNING user_id, email, first_name, last_name, created_at
     `;
 
     const user = result[0];
 
-    // Create learner profile
+    // Create learner profile (role is represented by presence in learner table)
     await sql`
-      INSERT INTO learner (id, progress_perc, status)
-      VALUES (${user.user_id}, 0, 'new')
+      INSERT INTO learner (user_id, status, learning_streak, total_points, level)
+      VALUES (${user.user_id}, 'active', 0, 0, 1)
     `;
 
     // Generate token
@@ -110,8 +118,8 @@ const register = async (req, res) => {
       user: {
         user_id: user.user_id,
         email: user.email,
-        full_name: user.full_name,
-        role: user.role
+        first_name: user.first_name,
+        last_name: user.last_name
       }
     });
 
@@ -137,7 +145,7 @@ const me = async (req, res) => {
     const userId = req.user.user_id; // From auth middleware
 
     const users = await sql`
-      SELECT user_id, email, role, full_name, created_at
+      SELECT user_id, email, first_name, last_name, created_at
       FROM useraccount
       WHERE user_id = ${userId}
     `;
@@ -171,11 +179,11 @@ module.exports = {
 /**
  * POST /api/auth/register-educator
  * body: { email: string, password: string, full_name?: string }
- * Creates a user with role 'educator' and returns token + user
+ * Creates a user and educator profile, and returns token + user
  */
 module.exports.registerEducator = async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { email, password, full_name, first_name, last_name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -184,13 +192,25 @@ module.exports.registerEducator = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    let firstName = first_name || null;
+    let lastName = last_name || null;
+    if ((!firstName || !lastName) && full_name) {
+      const parts = String(full_name).trim().split(/\s+/);
+      firstName = firstName || parts.shift() || null;
+      lastName = lastName || (parts.length ? parts.join(' ') : null);
+    }
     const result = await sql`
-      INSERT INTO useraccount (email, password, role, full_name)
-      VALUES (${email}, ${hashedPassword}, 'educator', ${full_name || null})
-      RETURNING user_id, email, role, full_name, created_at
+      INSERT INTO useraccount (email, password, first_name, last_name)
+      VALUES (${email}, ${hashedPassword}, ${firstName}, ${lastName})
+      RETURNING user_id, email, first_name, last_name, created_at
     `;
 
     const user = result[0];
+    // Create educator profile row
+    await sql`
+      INSERT INTO educator (user_id)
+      VALUES (${user.user_id})
+    `;
     const token = generateToken(user);
 
     res.status(201).json({
@@ -199,8 +219,8 @@ module.exports.registerEducator = async (req, res) => {
       user: {
         user_id: user.user_id,
         email: user.email,
-        full_name: user.full_name,
-        role: user.role
+        first_name: user.first_name,
+        last_name: user.last_name
       }
     });
   } catch (error) {

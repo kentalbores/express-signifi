@@ -22,28 +22,46 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Middleware to ensure user is a learner
-const requireLearner = (req, res, next) => {
-  if (req.user.role !== 'learner') {
-    return res.status(403).json({ error: 'Access denied. Learner role required.' });
+// Middleware to ensure user is a learner (exists in learner table)
+const requireLearner = async (req, res, next) => {
+  try {
+    const sql = require('../config/database');
+    const userId = req.user && req.user.user_id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const rows = await sql`SELECT 1 FROM learner WHERE user_id = ${userId} LIMIT 1`;
+    if (!rows.length) return res.status(403).json({ error: 'Access denied. Learner role required.' });
+    next();
+  } catch (e) {
+    return res.status(500).json({ error: 'Internal server error' });
   }
-  next();
 };
 
-// Middleware to ensure user is an educator
-const requireEducator = (req, res, next) => {
-  if (req.user.role !== 'educator') {
-    return res.status(403).json({ error: 'Access denied. Educator role required.' });
+// Middleware to ensure user is an educator (exists in educator table)
+const requireEducator = async (req, res, next) => {
+  try {
+    const sql = require('../config/database');
+    const userId = req.user && req.user.user_id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const rows = await sql`SELECT 1 FROM educator WHERE user_id = ${userId} LIMIT 1`;
+    if (!rows.length) return res.status(403).json({ error: 'Access denied. Educator role required.' });
+    next();
+  } catch (e) {
+    return res.status(500).json({ error: 'Internal server error' });
   }
-  next();
 };
 
-// Middleware to ensure user is admin
-const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Access denied. Admin role required.' });
+// Middleware to ensure user is superadmin (exists in superadmin table)
+const requireAdmin = async (req, res, next) => {
+  try {
+    const sql = require('../config/database');
+    const userId = req.user && req.user.user_id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const rows = await sql`SELECT 1 FROM superadmin WHERE user_id = ${userId} LIMIT 1`;
+    if (!rows.length) return res.status(403).json({ error: 'Access denied. Admin role required.' });
+    next();
+  } catch (e) {
+    return res.status(500).json({ error: 'Internal server error' });
   }
-  next();
 };
 
 module.exports = {

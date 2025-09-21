@@ -7,8 +7,8 @@ const createCourseModeration = async (req, res) => {
         if (!course_id || isNaN(course_id) || !admin_id || isNaN(admin_id) || !status) {
             return res.status(400).json({ error: 'Missing required fields: course_id, admin_id and status are required' });
         }
-        if (!['approved', 'rejected', 'flagged'].includes(status)) {
-            return res.status(400).json({ error: 'Invalid status. Must be one of: approved, rejected, flagged' });
+        if (!['approved', 'rejected', 'flagged', 'under_review', 'requires_changes'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status. Must be one of: approved, rejected, flagged, under_review, requires_changes' });
         }
         const result = await sql`
             INSERT INTO coursemoderation (course_id, admin_id, status, reviewed_at)
@@ -74,8 +74,8 @@ const updateCourseModeration = async (req, res) => {
         const updatedAdminId = admin_id !== undefined ? admin_id : current[0].admin_id;
         const updatedStatus = status !== undefined ? status : current[0].status;
         const updatedReviewedAt = reviewed_at !== undefined ? reviewed_at : current[0].reviewed_at;
-        if (updatedStatus && !['approved', 'rejected', 'flagged'].includes(updatedStatus)) {
-            return res.status(400).json({ error: 'Invalid status. Must be one of: approved, rejected, flagged' });
+        if (updatedStatus && !['approved', 'rejected', 'flagged', 'under_review', 'requires_changes'].includes(updatedStatus)) {
+            return res.status(400).json({ error: 'Invalid status. Must be one of: approved, rejected, flagged, under_review, requires_changes' });
         }
         const result = await sql`
             UPDATE coursemoderation SET course_id = ${updatedCourseId}, admin_id = ${updatedAdminId}, status = ${updatedStatus}, reviewed_at = ${updatedReviewedAt}
