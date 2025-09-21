@@ -273,6 +273,54 @@ curl -X POST http://54.206.125.253:5000/api/enrollments \
 
 ---
 
+## Payments API
+
+### 1. Create Payment Intent
+POST `/api/payments/intent`
+
+Auth: Bearer token (must be a learner)
+
+Request body:
+```json
+{
+  "course_id": 1
+}
+```
+
+Response (201):
+```json
+{
+  "clientSecret": "pi_..._secret_...",
+  "paymentIntentId": "pi_...",
+  "currency": "usd",
+  "amount": 1999,
+  "order_id": 42
+}
+```
+
+Notes:
+- The server creates a `course_order` (status: pending) and `order_item`, then creates a Stripe PaymentIntent for that amount. Metadata includes `order_id`, `learner_id`, `course_id`.
+- Frontend confirms the payment using `clientSecret` with Stripe.
+
+### 2. Stripe Webhook
+POST `/api/payments/webhook` (raw body)
+
+On `payment_intent.succeeded`:
+- Sets `course_order.status` to `completed`
+- Inserts into `payment_transaction` with status `completed`
+- Ensures `enrollment` exists for `(learner_id, course_id)` with status `active`
+
+On `payment_intent.payment_failed`:
+- Sets `course_order.status` to `cancelled`
+- Inserts into `payment_transaction` with status `failed`
+
+Environment variables:
+- `STRIPE_SECRET_KEY` (required)
+- `STRIPE_WEBHOOK_SECRET` (recommended)
+- `STRIPE_CURRENCY` (default: `usd`)
+
+---
+
 ### 2. Get All Enrollments
 **GET** `/api/enrollments`
 
