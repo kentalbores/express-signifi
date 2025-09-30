@@ -5,8 +5,11 @@ const {
     getAllUsers,
     getUserById,
     updateUser,
-    deleteUser
+    deleteUser,
+    getUserRolesById,
+    manageUserRoles
 } = require('../../controllers/user/userController');
+const { authenticateToken, requireSuperAdmin } = require('../../middleware/auth');
 
 /**
  * @swagger
@@ -214,5 +217,9 @@ router.get('/', getAllUsers);          // GET /api/users - Get all users
 router.get('/:id', getUserById);       // GET /api/users/:id - Get user by ID
 router.put('/:id', updateUser);        // PUT /api/users/:id - Update user
 router.delete('/:id', deleteUser);     // DELETE /api/users/:id - Delete user
+
+// Role management routes
+router.get('/:id/roles', authenticateToken, getUserRolesById);     // GET /api/users/:id/roles - Get user roles
+router.post('/:id/roles', authenticateToken, requireSuperAdmin, manageUserRoles); // POST /api/users/:id/roles - Manage user roles (superadmin only)
 
 module.exports = router;

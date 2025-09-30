@@ -117,13 +117,14 @@ const {
     updateCourseModeration,
     deleteCourseModeration
 } = require('../../controllers/coursemoderation/coursemoderationController');
+const { authenticateToken, requireSuperAdmin } = require('../../middleware/auth');
 
-// Course moderation routes
-router.post('/', createCourseModeration);               // POST /api/course-moderations
-router.get('/', getAllCourseModerations);               // GET /api/course-moderations
-router.get('/:id', getCourseModerationById);            // GET /api/course-moderations/:id
-router.put('/:id', updateCourseModeration);             // PUT /api/course-moderations/:id
-router.delete('/:id', deleteCourseModeration);          // DELETE /api/course-moderations/:id
+// Course moderation routes (all require superadmin authentication)
+router.post('/', authenticateToken, requireSuperAdmin, createCourseModeration);               // POST /api/course-moderations (superadmin only)
+router.get('/', authenticateToken, requireSuperAdmin, getAllCourseModerations);               // GET /api/course-moderations (superadmin only)
+router.get('/:id', authenticateToken, requireSuperAdmin, getCourseModerationById);            // GET /api/course-moderations/:id (superadmin only)
+router.put('/:id', authenticateToken, requireSuperAdmin, updateCourseModeration);             // PUT /api/course-moderations/:id (superadmin only)
+router.delete('/:id', authenticateToken, requireSuperAdmin, deleteCourseModeration);          // DELETE /api/course-moderations/:id (superadmin only)
 
 module.exports = router;
 

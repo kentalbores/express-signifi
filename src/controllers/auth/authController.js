@@ -1,16 +1,19 @@
 const sql = require('../../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { getUserRoles } = require('../../middleware/auth');
 
 // Get JWT secret from env
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Generate JWT token
-function generateToken(user) {
+// Generate JWT token with user roles
+async function generateToken(user) {
+  const roles = await getUserRoles(user.user_id);
   return jwt.sign(
     {
       user_id: user.user_id,
-      email: user.email
+      email: user.email,
+      roles
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -51,15 +54,21 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate token
-    const token = generateToken(user);
+    // Generate token with roles
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     // Return user data without password
     const { password: _, ...userWithoutPassword } = user;
 
     res.json({
       token,
-      user: userWithoutPassword
+      user: {
+        ...userWithoutPassword,
+        roles
+      }
     });
 
   } catch (error) {
@@ -109,8 +118,11 @@ const register = async (req, res) => {
       VALUES (${user.user_id}, 'active', 0, 0, 1)
     `;
 
-    // Generate token
-    const token = generateToken(user);
+    // Generate token with roles
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -119,7 +131,8 @@ const register = async (req, res) => {
         user_id: user.user_id,
         email: user.email,
         first_name: user.first_name,
-        last_name: user.last_name
+        last_name: user.last_name,
+        roles
       }
     });
 
@@ -158,8 +171,14 @@ const me = async (req, res) => {
 
     const user = users[0];
     const { password: _, ...userWithoutPassword } = user;
+    
+    // Include roles from auth middleware
+    const roles = req.user.roles || [];
 
-    res.json(userWithoutPassword);
+    res.json({
+      ...userWithoutPassword,
+      roles
+    });
 
   } catch (error) {
     console.error('Error fetching user:', error);
@@ -211,7 +230,10 @@ module.exports.registerEducator = async (req, res) => {
       INSERT INTO educator (user_id)
       VALUES (${user.user_id})
     `;
-    const token = generateToken(user);
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     res.status(201).json({
       message: 'Educator registered successfully',
@@ -220,7 +242,8 @@ module.exports.registerEducator = async (req, res) => {
         user_id: user.user_id,
         email: user.email,
         first_name: user.first_name,
-        last_name: user.last_name
+        last_name: user.last_name,
+        roles
       }
     });
   } catch (error) {

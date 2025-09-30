@@ -13,9 +13,7 @@ const authRoutes = require('./routes/auth/authRoutes');
 const institutionRoutes = require('./routes/institution/institutionRoutes');
 const coursemoduleRoutes = require('./routes/coursemodule/coursemoduleRoutes');
 const lessonRoutes = require('./routes/lesson/lessonRoutes');
-const lessonmaterialRoutes = require('./routes/lessonmaterial/lessonmaterialRoutes');
 const enrollmentRoutes = require('./routes/enrollment/enrollmentRoutes');
-const attemptRoutes = require('./routes/attempt/attemptRoutes');
 const feedbackRoutes = require('./routes/feedback/feedbackRoutes');
 const achievementRoutes = require('./routes/achievement/achievementRoutes');
 const activityRoutes = require('./routes/activity/activityRoutes');
@@ -26,11 +24,12 @@ const transactionRoutes = require('./routes/transaction/transactionRoutes');
 const adminactivityRoutes = require('./routes/adminactivity/adminactivityRoutes');
 const coursemoderationRoutes = require('./routes/coursemoderation/coursemoderationRoutes');
 const educatorverificationRoutes = require('./routes/educatorverification/educatorverificationRoutes');
-const assignmentSubmissionRoutes = require('./routes/assignmentsubmission/assignmentSubmissionRoutes');
 const courseCategoryRoutes = require('./routes/coursecategory/courseCategoryRoutes');
 const educatorRoutes = require('./routes/educator/educatorRoutes');
 const superAdminRoutes = require('./routes/superadmin/superAdminRoutes');
 const institutionAdminRoutes = require('./routes/institutionadmin/institutionAdminRoutes');
+const selfStudyPerformanceRoutes = require('./routes/selfstudy/selfStudyPerformanceRoutes');
+const contentPolicyRoutes = require('./routes/contentpolicy/contentPolicyRoutes');
 const { paymentsRouter, stripeWebhookHandler } = require('./routes/payment/paymentRoutes');
 
 // Stripe webhook must use raw body BEFORE express.json()
@@ -72,9 +71,7 @@ app.use('/api/learner', learnerRoutes);
 app.use('/api/institutions', institutionRoutes);
 app.use('/api/modules', coursemoduleRoutes);
 app.use('/api/lessons', lessonRoutes);
-app.use('/api/lesson-materials', lessonmaterialRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
-app.use('/api/attempts', attemptRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/achievements', achievementRoutes);
 app.use('/api/activities', activityRoutes);
@@ -85,11 +82,12 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/admin-activities', adminactivityRoutes);
 app.use('/api/course-moderations', coursemoderationRoutes);
 app.use('/api/educator-verifications', educatorverificationRoutes);
-app.use('/api/assignment-submissions', assignmentSubmissionRoutes);
 app.use('/api/course-categories', courseCategoryRoutes);
 app.use('/api/educators', educatorRoutes);
 app.use('/api/super-admins', superAdminRoutes);
 app.use('/api/institution-admins', institutionAdminRoutes);
+app.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
+app.use('/api/content-policies', contentPolicyRoutes);
 app.use('/api/payments', paymentsRouter);
 
 // Start server

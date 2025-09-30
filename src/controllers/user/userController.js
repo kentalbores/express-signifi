@@ -1,5 +1,6 @@
 const sql = require('../../config/database');
 const bcrypt = require('bcrypt');
+const { getUserRoles, clearUserRoleCache } = require('../../middleware/auth');
 
 // Create a new user account
 const createUser = async (req, res) => {
@@ -363,10 +364,176 @@ const deleteUser = async (req, res) => {
     }
 };
 
+// Get user roles
+const getUserRolesById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                error: 'Invalid user ID'
+            });
+        }
+
+        // Check if user exists
+        const users = await sql`
+            SELECT user_id, email, first_name, last_name 
+            FROM useraccount 
+            WHERE user_id = ${userId}
+        `;
+
+        if (users.length === 0) {
+            return res.status(404).json({
+                error: 'User not found'
+            });
+        }
+
+        const roles = await getUserRoles(userId);
+
+        res.status(200).json({
+            user_id: userId,
+            roles
+        });
+
+    } catch (error) {
+        console.error('Error fetching user roles:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+};
+
+// Assign or remove user roles (superadmin only)
+const manageUserRoles = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, role } = req.body; // action: 'add' or 'remove', role: 'learner', 'educator', etc.
+        const userId = parseInt(id);
+
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                error: 'Invalid user ID'
+            });
+        }
+
+        if (!action || !role) {
+            return res.status(400).json({
+                error: 'Action and role are required'
+            });
+        }
+
+        if (!['add', 'remove'].includes(action)) {
+            return res.status(400).json({
+                error: 'Action must be either "add" or "remove"'
+            });
+        }
+
+        const validRoles = ['learner', 'educator', 'institutionadmin', 'superadmin'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({
+                error: `Invalid role. Must be one of: ${validRoles.join(', ')}`
+            });
+        }
+
+        // Check if user exists
+        const users = await sql`
+            SELECT user_id FROM useraccount WHERE user_id = ${userId}
+        `;
+
+        if (users.length === 0) {
+            return res.status(400).json({
+                error: 'User not found'
+            });
+        }
+
+        // Handle role assignment/removal
+        try {
+            if (action === 'add') {
+                // Add role by inserting into appropriate table
+                switch (role) {
+                    case 'learner':
+                        await sql`
+                            INSERT INTO learner (user_id, status, learning_streak, total_points, level)
+                            VALUES (${userId}, 'active', 0, 0, 1)
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                    case 'educator':
+                        await sql`
+                            INSERT INTO educator (user_id, verification_status)
+                            VALUES (${userId}, 'pending')
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                    case 'institutionadmin':
+                        // Note: institutionadmin requires institution_id, so we'll need to handle this carefully
+                        return res.status(400).json({
+                            error: 'Institution admin role requires additional setup. Use specific institution admin endpoints.'
+                        });
+                    case 'superadmin':
+                        await sql`
+                            INSERT INTO superadmin (user_id, access_level)
+                            VALUES (${userId}, 'full')
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                }
+            } else if (action === 'remove') {
+                // Remove role by deleting from appropriate table
+                switch (role) {
+                    case 'learner':
+                        await sql`DELETE FROM learner WHERE user_id = ${userId}`;
+                        break;
+                    case 'educator':
+                        await sql`DELETE FROM educator WHERE user_id = ${userId}`;
+                        break;
+                    case 'institutionadmin':
+                        await sql`DELETE FROM institutionadmin WHERE user_id = ${userId}`;
+                        break;
+                    case 'superadmin':
+                        await sql`DELETE FROM superadmin WHERE user_id = ${userId}`;
+                        break;
+                }
+            }
+
+            // Clear role cache for this user
+            clearUserRoleCache(userId);
+
+            // Get updated roles
+            const updatedRoles = await getUserRoles(userId);
+
+            res.status(200).json({
+                message: `Role ${action}ed successfully`,
+                user_id: userId,
+                action,
+                role,
+                current_roles: updatedRoles
+            });
+
+        } catch (dbError) {
+            if (dbError.code === '23503') {
+                return res.status(400).json({
+                    error: 'Foreign key constraint violation. User may not exist or role assignment failed.'
+                });
+            }
+            throw dbError;
+        }
+
+    } catch (error) {
+        console.error('Error managing user roles:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+};
+
 module.exports = {
     createUser,
     getAllUsers,
     getUserById,
     updateUser,
-    deleteUser
+    deleteUser,
+    getUserRolesById,
+    manageUserRoles
 };

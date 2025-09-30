@@ -136,21 +136,21 @@ const createCourse = async (req, res) => {
     }
 };
 
-// Get all courses
+// Get all courses with enhanced filtering and all fields
 const getAllCourses = async (req, res) => {
     try {
-        const { is_published, educator_id, institution_id } = req.query;
-
-        // Base query
-        let baseQuery = `
-            SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
-                   c.price, c.is_published, c.created_at,
-                   (u.first_name || ' ' || u.last_name) as educator_name,
-                   i.name as institution_name
-            FROM course c
-            LEFT JOIN useraccount u ON c.educator_id = u.user_id
-            LEFT JOIN institution i ON c.institution_id = i.institution_id
-        `;
+        const { 
+            is_published, 
+            educator_id, 
+            institution_id, 
+            category_id,
+            difficulty_level,
+            is_featured,
+            language,
+            limit = 50, 
+            offset = 0,
+            search
+        } = req.query;
 
         // Build WHERE conditions
         const conditions = [];
@@ -168,18 +168,78 @@ const getAllCourses = async (req, res) => {
             conditions.push('c.institution_id = $' + (values.length + 1));
             values.push(institution_id);
         }
+        if (category_id) {
+            conditions.push('c.category_id = $' + (values.length + 1));
+            values.push(category_id);
+        }
+        if (difficulty_level) {
+            conditions.push('c.difficulty_level = $' + (values.length + 1));
+            values.push(difficulty_level);
+        }
+        if (is_featured !== undefined) {
+            conditions.push('c.is_featured = $' + (values.length + 1));
+            values.push(is_featured === 'true');
+        }
+        if (language) {
+            conditions.push('c.language = $' + (values.length + 1));
+            values.push(language);
+        }
+        if (search) {
+            conditions.push('(c.title ILIKE $' + (values.length + 1) + ' OR c.description ILIKE $' + (values.length + 1) + ')');
+            values.push(`%${search}%`);
+        }
+
+        // Base query with all fields
+        let baseQuery = `
+            SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
+                   c.price, c.discounted_price, c.currency, c.difficulty_level, 
+                   c.estimated_duration_hours, c.language, c.requirements, c.what_you_will_learn,
+                   c.target_audience, c.is_published, c.is_active, c.is_featured,
+                   c.enrollment_count, c.average_rating, c.total_reviews, c.last_updated,
+                   c.published_at, c.created_at, c.updated_at,
+                   (u.first_name || ' ' || u.last_name) as educator_name,
+                   i.name as institution_name,
+                   cc.name as category_name, cc.slug as category_slug
+            FROM course c
+            LEFT JOIN useraccount u ON c.educator_id = u.user_id
+            LEFT JOIN institution i ON c.institution_id = i.institution_id
+            LEFT JOIN course_category cc ON c.category_id = cc.category_id
+        `;
 
         if (conditions.length > 0) {
             baseQuery += ' WHERE ' + conditions.join(' AND ');
         }
         
-        baseQuery += ' ORDER BY c.created_at DESC';
+        baseQuery += ` ORDER BY 
+            CASE WHEN c.is_featured = true THEN 0 ELSE 1 END,
+            c.average_rating DESC, 
+            c.enrollment_count DESC,
+            c.created_at DESC
+            LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+        
+        values.push(parseInt(limit), parseInt(offset));
 
         const courses = await sql.unsafe(baseQuery, values);
 
+        // Get total count for pagination
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM course c
+            ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}
+        `;
+        const countResult = await sql.unsafe(countQuery, values.slice(0, -2));
+        const total = parseInt(countResult[0].total);
+
         res.status(200).json({
             message: 'Courses retrieved successfully',
-            courses: courses
+            courses,
+            pagination: {
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                has_more: total > parseInt(offset) + parseInt(limit)
+            }
         });
 
     } catch (error) {
@@ -190,7 +250,7 @@ const getAllCourses = async (req, res) => {
     }
 };
 
-// Get course by ID
+// Get course by ID with complete details
 const getCourseById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -202,13 +262,23 @@ const getCourseById = async (req, res) => {
         }
 
         const result = await sql`
-            SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
-                   c.price, c.is_published, c.created_at,
-                   (u.first_name || ' ' || u.last_name) as educator_name, u.email as educator_email,
-                   i.name as institution_name, i.email as institution_email
+            SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
+                   c.price, c.discounted_price, c.currency, c.difficulty_level, 
+                   c.estimated_duration_hours, c.language, c.requirements, c.what_you_will_learn,
+                   c.target_audience, c.is_published, c.is_active, c.is_featured,
+                   c.enrollment_count, c.average_rating, c.total_reviews, c.last_updated,
+                   c.published_at, c.created_at, c.updated_at,
+                   (u.first_name || ' ' || u.last_name) as educator_name, 
+                   u.email as educator_email, u.profile_picture_url as educator_avatar,
+                   i.name as institution_name, i.email as institution_email,
+                   i.website as institution_website, i.logo_url as institution_logo,
+                   cc.name as category_name, cc.slug as category_slug,
+                   cc.description as category_description, cc.icon_url as category_icon
             FROM course c
             LEFT JOIN useraccount u ON c.educator_id = u.user_id
             LEFT JOIN institution i ON c.institution_id = i.institution_id
+            LEFT JOIN course_category cc ON c.category_id = cc.category_id
             WHERE c.course_id = ${id}
         `;
 
@@ -218,9 +288,38 @@ const getCourseById = async (req, res) => {
             });
         }
 
+        // Get course modules and lessons count
+        const moduleStats = await sql`
+            SELECT 
+                COUNT(DISTINCT cm.module_id) as total_modules,
+                COUNT(DISTINCT l.lesson_id) as total_lessons,
+                SUM(l.estimated_duration_minutes) as total_duration_minutes
+            FROM coursemodule cm
+            LEFT JOIN lesson l ON cm.module_id = l.module_id AND l.is_active = true
+            WHERE cm.course_id = ${id} AND cm.is_active = true
+        `;
+
+        // Get recent course reviews
+        const recentReviews = await sql`
+            SELECT cr.review_id, cr.rating, cr.title, cr.comment, cr.created_at,
+                   (u.first_name || ' ' || u.last_name) as reviewer_name,
+                   u.profile_picture_url as reviewer_avatar
+            FROM course_review cr
+            LEFT JOIN useraccount u ON cr.learner_id = u.user_id
+            WHERE cr.course_id = ${id}
+            ORDER BY cr.created_at DESC
+            LIMIT 5
+        `;
+
+        const course = {
+            ...result[0],
+            stats: moduleStats[0],
+            recent_reviews: recentReviews
+        };
+
         res.status(200).json({
             message: 'Course retrieved successfully',
-            course: result[0]
+            course
         });
 
     } catch (error) {
