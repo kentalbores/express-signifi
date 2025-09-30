@@ -30,6 +30,7 @@ const superAdminRoutes = require('./routes/superadmin/superAdminRoutes');
 const institutionAdminRoutes = require('./routes/institutionadmin/institutionAdminRoutes');
 const selfStudyPerformanceRoutes = require('./routes/selfstudy/selfStudyPerformanceRoutes');
 const contentPolicyRoutes = require('./routes/contentpolicy/contentPolicyRoutes');
+const analyticsRoutes = require('./routes/analytics/analyticsRoutes');
 const { paymentsRouter, stripeWebhookHandler } = require('./routes/payment/paymentRoutes');
 
 // Stripe webhook must use raw body BEFORE express.json()
@@ -88,6 +89,7 @@ app.use('/api/super-admins', superAdminRoutes);
 app.use('/api/institution-admins', institutionAdminRoutes);
 app.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
 app.use('/api/content-policies', contentPolicyRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payments', paymentsRouter);
 
 // Start server

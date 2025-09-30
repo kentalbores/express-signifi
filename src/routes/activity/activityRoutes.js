@@ -5,8 +5,11 @@ const {
     getAllActivities,
     getActivityById,
     updateActivity,
-    deleteActivity
+    deleteActivity,
+    getActivityAnalytics,
+    getVideoWatchingAnalytics
 } = require('../../controllers/activity/activityController');
+const { authenticateToken, requireLearner, requireAdminRole } = require('../../middleware/auth');
 
 /**
  * @swagger
@@ -179,12 +182,18 @@ const {
  *               $ref: '#/components/schemas/Error'
  */
 
-// Activity routes
-router.post('/', createActivity);            // POST /api/activities
-router.get('/', getAllActivities);           // GET /api/activities
-router.get('/:id', getActivityById);         // GET /api/activities/:id
-router.put('/:id', updateActivity);          // PUT /api/activities/:id
-router.delete('/:id', deleteActivity);       // DELETE /api/activities/:id
+// Protected activity routes (learners can manage their own activities)
+router.post('/', authenticateToken, requireLearner, createActivity);            // POST /api/activities (learners only)
+router.get('/', authenticateToken, getAllActivities);           // GET /api/activities (authenticated users)
+router.get('/:id', authenticateToken, getActivityById);         // GET /api/activities/:id (authenticated users)
+router.put('/:id', authenticateToken, requireLearner, updateActivity);          // PUT /api/activities/:id (learners only)
+
+// New analytics endpoints
+router.get('/analytics/detailed', authenticateToken, getActivityAnalytics);    // GET /api/activities/analytics/detailed
+router.get('/analytics/video', authenticateToken, getVideoWatchingAnalytics);  // GET /api/activities/analytics/video
+
+// Admin-only routes
+router.delete('/:id', authenticateToken, requireAdminRole, deleteActivity);     // DELETE /api/activities/:id (admins only)
 
 module.exports = router;
 

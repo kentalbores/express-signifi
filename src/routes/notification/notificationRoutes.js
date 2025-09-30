@@ -170,15 +170,32 @@ const {
     getAllNotifications,
     getNotificationById,
     updateNotification,
-    deleteNotification
+    deleteNotification,
+    broadcastNotificationByRole,
+    getUserNotificationPreferences,
+    updateUserNotificationPreferences,
+    markAllNotificationsAsRead,
+    getNotificationAnalytics
 } = require('../../controllers/notification/notificationController');
+const { authenticateToken, requireAdminRole, requireSuperAdmin } = require('../../middleware/auth');
 
-// Notification routes
-router.post('/', createNotification);             // POST /api/notifications
-router.get('/', getAllNotifications);             // GET /api/notifications
-router.get('/:id', getNotificationById);          // GET /api/notifications/:id
-router.put('/:id', updateNotification);           // PUT /api/notifications/:id
-router.delete('/:id', deleteNotification);        // DELETE /api/notifications/:id
+// Basic notification routes
+router.post('/', authenticateToken, createNotification);             // POST /api/notifications (authenticated users)
+router.get('/', authenticateToken, getAllNotifications);             // GET /api/notifications (authenticated users)
+router.get('/:id', authenticateToken, getNotificationById);          // GET /api/notifications/:id (authenticated users)
+router.put('/:id', authenticateToken, updateNotification);           // PUT /api/notifications/:id (authenticated users)
+router.delete('/:id', authenticateToken, deleteNotification);        // DELETE /api/notifications/:id (authenticated users)
+
+// Role-specific notification features
+router.post('/broadcast', authenticateToken, requireAdminRole, broadcastNotificationByRole); // POST /api/notifications/broadcast (admins only)
+
+// User notification preferences
+router.get('/preferences/:userId', authenticateToken, getUserNotificationPreferences);      // GET /api/notifications/preferences/:userId
+router.put('/preferences/:userId', authenticateToken, updateUserNotificationPreferences);  // PUT /api/notifications/preferences/:userId
+router.patch('/mark-all-read/:userId', authenticateToken, markAllNotificationsAsRead);     // PATCH /api/notifications/mark-all-read/:userId
+
+// Analytics (admin only)
+router.get('/analytics/overview', authenticateToken, requireAdminRole, getNotificationAnalytics); // GET /api/notifications/analytics/overview
 
 module.exports = router;
 

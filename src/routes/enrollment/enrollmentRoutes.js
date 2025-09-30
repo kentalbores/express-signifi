@@ -170,15 +170,28 @@ const {
     getAllEnrollments,
     getEnrollmentById,
     updateEnrollment,
-    deleteEnrollment
+    deleteEnrollment,
+    getEnrollmentProgress,
+    generateEnrollmentCertificate,
+    getEnrollmentAnalytics
 } = require('../../controllers/enrollment/enrollmentController');
+const { authenticateToken, requireLearner, requireAdminRole } = require('../../middleware/auth');
 
-// Enrollment routes
-router.post('/', createEnrollment);             // POST /api/enrollments
-router.get('/', getAllEnrollments);             // GET /api/enrollments
-router.get('/:id', getEnrollmentById);          // GET /api/enrollments/:id
-router.put('/:id', updateEnrollment);           // PUT /api/enrollments/:id
-router.delete('/:id', deleteEnrollment);        // DELETE /api/enrollments/:id
+// Public enrollment routes
+router.get('/', authenticateToken, getAllEnrollments);             // GET /api/enrollments (authenticated users)
+router.get('/:id', authenticateToken, getEnrollmentById);          // GET /api/enrollments/:id (authenticated users)
+
+// Learner-specific enrollment routes
+router.post('/', authenticateToken, requireLearner, createEnrollment);             // POST /api/enrollments (learners only)
+router.put('/:id', authenticateToken, requireLearner, updateEnrollment);           // PUT /api/enrollments/:id (learners only)
+
+// New self-study integration routes
+router.get('/:id/progress', authenticateToken, getEnrollmentProgress);             // GET /api/enrollments/:id/progress
+router.post('/:id/certificate', authenticateToken, requireLearner, generateEnrollmentCertificate); // POST /api/enrollments/:id/certificate
+router.get('/analytics/:learner_id', authenticateToken, getEnrollmentAnalytics);   // GET /api/enrollments/analytics/:learner_id
+
+// Admin-only routes
+router.delete('/:id', authenticateToken, requireAdminRole, deleteEnrollment);      // DELETE /api/enrollments/:id (admins only)
 
 module.exports = router;
 

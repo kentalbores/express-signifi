@@ -38,7 +38,7 @@ const getAllFeedback = async (req, res) => {
             FROM course_review r
             LEFT JOIN course c ON r.course_id = c.course_id`;
         const values = [];
-        if (course_id) { query += ' WHERE f.course_id = $1'; values.push(course_id); }
+        if (course_id) { query += ' WHERE r.course_id = $1'; values.push(course_id); }
         query += ' ORDER BY r.created_at DESC';
         const feedback = await sql.unsafe(query, values);
         res.status(200).json({ message: 'Feedback retrieved successfully', feedback });

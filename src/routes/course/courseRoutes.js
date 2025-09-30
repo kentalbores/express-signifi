@@ -7,6 +7,8 @@ const {
     updateCourse,
     deleteCourse
 } = require('../../controllers/course/courseController');
+const { authenticateToken, requireEducator, requireAdminRole } = require('../../middleware/auth');
+const { validate, schemas } = require('../../middleware/validation');
 const sql = require('../../config/database');
 
 /**
@@ -221,9 +223,7 @@ const sql = require('../../config/database');
  *               $ref: '#/components/schemas/Error'
  */
 
-// Course routes
-router.post('/', createCourse);         // POST /api/courses - Create new course
-router.get('/', getAllCourses);        // GET /api/courses - Get all courses (with optional filters)
+// Public course routes (no authentication required)
 router.get('/published', async (req, res) => { // GET /api/courses/published
   try {
     const rows = await sql`SELECT course_id, title, description, price, is_published, created_at FROM course WHERE is_published = true ORDER BY created_at DESC`;
@@ -243,8 +243,12 @@ router.get('/search', async (req, res) => { // GET /api/courses/search?q=
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-router.get('/:id', getCourseById);     // GET /api/courses/:id - Get course by ID
-router.put('/:id', updateCourse);      // PUT /api/courses/:id - Update course
-router.delete('/:id', deleteCourse);   // DELETE /api/courses/:id - Delete course
+router.get('/:id', getCourseById);     // GET /api/courses/:id - Get course by ID (public)
+
+// Protected course routes with validation
+router.post('/', authenticateToken, requireEducator, validate(schemas.course.create), createCourse);         // POST /api/courses - Create new course (educators only)
+router.get('/', authenticateToken, validate(schemas.query.courseFilters, 'query'), getAllCourses);        // GET /api/courses - Get all courses (authenticated users)
+router.put('/:id', authenticateToken, requireEducator, validate(schemas.params.id, 'params'), validate(schemas.course.update), updateCourse);      // PUT /api/courses/:id - Update course (educators only)
+router.delete('/:id', authenticateToken, requireAdminRole, validate(schemas.params.id, 'params'), deleteCourse);   // DELETE /api/courses/:id - Delete course (admins only)
 
 module.exports = router;
