@@ -1,16 +1,16 @@
 const sql = require('../../config/database');
 
-// Create admin activity
+// Create admin activity (admin_activity_log)
 const createAdminActivity = async (req, res) => {
     try {
-        const { admin_id, action, target_table, target_id } = req.body;
-        if (!admin_id || isNaN(admin_id) || !action || !target_table || !target_id || isNaN(target_id)) {
-            return res.status(400).json({ error: 'Missing required fields: admin_id (number), action, target_table, target_id (number) are required' });
+        const { admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent } = req.body;
+        if (!admin_id || isNaN(admin_id) || !action) {
+            return res.status(400).json({ error: 'Missing required fields: admin_id (number) and action are required' });
         }
         const result = await sql`
-            INSERT INTO adminactivity (admin_id, action, target_table, target_id)
-            VALUES (${admin_id}, ${action}, ${target_table}, ${target_id})
-            RETURNING activity_id, admin_id, action, target_table, target_id, timestamp
+            INSERT INTO admin_activity_log (admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent)
+            VALUES (${admin_id}, ${action}, ${target_table || null}, ${target_id || null}, ${old_values || null}, ${new_values || null}, ${ip_address || null}, ${user_agent || null})
+            RETURNING log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at
         `;
         res.status(201).json({ message: 'Admin activity created successfully', activity: result[0] });
     } catch (error) {
@@ -26,13 +26,13 @@ const createAdminActivity = async (req, res) => {
 const getAllAdminActivities = async (req, res) => {
     try {
         const { admin_id, target_table } = req.query;
-        let query = 'SELECT activity_id, admin_id, action, target_table, target_id, timestamp FROM adminactivity';
+        let query = 'SELECT log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at FROM admin_activity_log';
         const conditions = [];
         const values = [];
         if (admin_id) { conditions.push('admin_id = $' + (values.length + 1)); values.push(admin_id); }
         if (target_table) { conditions.push('target_table = $' + (values.length + 1)); values.push(target_table); }
         if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY timestamp DESC';
+        query += ' ORDER BY created_at DESC';
         const activities = await sql.unsafe(query, values);
         res.status(200).json({ message: 'Admin activities retrieved successfully', activities });
     } catch (error) {
@@ -46,7 +46,7 @@ const getAdminActivityById = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid activity ID' });
-        const result = await sql`SELECT activity_id, admin_id, action, target_table, target_id, timestamp FROM adminactivity WHERE activity_id = ${id}`;
+        const result = await sql`SELECT log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at FROM admin_activity_log WHERE log_id = ${id}`;
         if (result.length === 0) return res.status(404).json({ error: 'Admin activity not found' });
         res.status(200).json({ message: 'Admin activity retrieved successfully', activity: result[0] });
     } catch (error) {
@@ -59,18 +59,22 @@ const getAdminActivityById = async (req, res) => {
 const updateAdminActivity = async (req, res) => {
     try {
         const { id } = req.params;
-        const { admin_id, action, target_table, target_id } = req.body;
+        const { admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent } = req.body;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid activity ID' });
-        const current = await sql`SELECT admin_id, action, target_table, target_id FROM adminactivity WHERE activity_id = ${id}`;
+        const current = await sql`SELECT admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent FROM admin_activity_log WHERE log_id = ${id}`;
         if (current.length === 0) return res.status(404).json({ error: 'Admin activity not found' });
         const updatedAdminId = admin_id !== undefined ? admin_id : current[0].admin_id;
         const updatedAction = action !== undefined ? action : current[0].action;
         const updatedTargetTable = target_table !== undefined ? target_table : current[0].target_table;
         const updatedTargetId = target_id !== undefined ? target_id : current[0].target_id;
+        const updatedOldValues = old_values !== undefined ? old_values : current[0].old_values;
+        const updatedNewValues = new_values !== undefined ? new_values : current[0].new_values;
+        const updatedIp = ip_address !== undefined ? ip_address : current[0].ip_address;
+        const updatedUa = user_agent !== undefined ? user_agent : current[0].user_agent;
         const result = await sql`
-            UPDATE adminactivity SET admin_id = ${updatedAdminId}, action = ${updatedAction}, target_table = ${updatedTargetTable}, target_id = ${updatedTargetId}
-            WHERE activity_id = ${id}
-            RETURNING activity_id, admin_id, action, target_table, target_id, timestamp
+            UPDATE admin_activity_log SET admin_id = ${updatedAdminId}, action = ${updatedAction}, target_table = ${updatedTargetTable}, target_id = ${updatedTargetId}, old_values = ${updatedOldValues}, new_values = ${updatedNewValues}, ip_address = ${updatedIp}, user_agent = ${updatedUa}
+            WHERE log_id = ${id}
+            RETURNING log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at
         `;
         res.status(200).json({ message: 'Admin activity updated successfully', activity: result[0] });
     } catch (error) {
@@ -87,7 +91,7 @@ const deleteAdminActivity = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid activity ID' });
-        const result = await sql`DELETE FROM adminactivity WHERE activity_id = ${id} RETURNING activity_id`;
+        const result = await sql`DELETE FROM admin_activity_log WHERE log_id = ${id} RETURNING log_id`;
         if (result.length === 0) return res.status(404).json({ error: 'Admin activity not found' });
         res.status(200).json({ message: 'Admin activity deleted successfully' });
     } catch (error) {

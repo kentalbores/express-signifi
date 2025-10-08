@@ -1,24 +1,40 @@
 const sql = require('../../config/database');
 const bcrypt = require('bcrypt');
+const { getUserRoles, clearUserRoleCache } = require('../../middleware/auth');
 
 // Create a new user account
 const createUser = async (req, res) => {
     try {
-        const { email, password, role, full_name } = req.body;
+        const { 
+            email, 
+            password, 
+            first_name, 
+            last_name, 
+            phone,
+            date_of_birth,
+            gender,
+            profile_picture_url,
+            bio,
+            location,
+            timezone = 'UTC',
+            language_preference = 'en'
+        } = req.body;
 
         // Validate required fields
-        if (!email || !password || !role) {
+        if (!email || !password || !first_name || !last_name) {
             return res.status(400).json({
-                error: 'Missing required fields: email, password, and role are required'
+                error: 'Missing required fields: email, password, first_name, and last_name are required'
             });
         }
 
-        // Validate role
-        const validRoles = ['learner', 'educator', 'admin', 'institution'];
-        if (!validRoles.includes(role)) {
-            return res.status(400).json({
-                error: 'Invalid role. Must be one of: learner, educator, admin, institution'
-            });
+        // Validate gender if provided
+        if (gender) {
+            const validGenders = ['male', 'female', 'other', 'prefer_not_to_say'];
+            if (!validGenders.includes(gender)) {
+                return res.status(400).json({
+                    error: 'Invalid gender. Must be one of: male, female, other, prefer_not_to_say'
+                });
+            }
         }
 
         // Hash password
@@ -27,9 +43,18 @@ const createUser = async (req, res) => {
 
         // Insert user into database
         const result = await sql`
-            INSERT INTO useraccount (email, password, role, full_name)
-            VALUES (${email}, ${hashedPassword}, ${role}, ${full_name})
-            RETURNING user_id, email, role, full_name, created_at
+            INSERT INTO useraccount (
+                email, password, first_name, last_name, phone, date_of_birth,
+                gender, profile_picture_url, bio, location, timezone, language_preference
+            )
+            VALUES (
+                ${email}, ${hashedPassword}, ${first_name}, ${last_name}, ${phone || null},
+                ${date_of_birth || null}, ${gender || null}, ${profile_picture_url || null}, ${bio || null}, 
+                ${location || null}, ${timezone || 'UTC'}, ${language_preference || 'en'}
+            )
+            RETURNING user_id, email, first_name, last_name, phone, date_of_birth,
+                     gender, profile_picture_url, bio, location, timezone, 
+                     language_preference, is_active, is_verified, created_at
         `;
 
         const user = result[0];
@@ -58,11 +83,45 @@ const createUser = async (req, res) => {
 // Get all users
 const getAllUsers = async (req, res) => {
     try {
-        const users = await sql`
-            SELECT user_id, email, role, full_name, created_at 
+        const { is_active, is_verified } = req.query;
+        
+        let query = sql`
+            SELECT user_id, email, first_name, last_name, phone, date_of_birth,
+                   gender, profile_picture_url, bio, location, timezone, 
+                   language_preference, is_active, is_verified, email_verified,
+                   phone_verified, last_login, created_at, updated_at
             FROM useraccount
-            ORDER BY created_at DESC
         `;
+        
+        if (is_active !== undefined || is_verified !== undefined) {
+            const conditions = [];
+            if (is_active !== undefined) {
+                conditions.push(sql`is_active = ${is_active === 'true'}`);
+            }
+            if (is_verified !== undefined) {
+                conditions.push(sql`is_verified = ${is_verified === 'true'}`);
+            }
+            query = sql`
+                SELECT user_id, email, first_name, last_name, phone, date_of_birth,
+                       gender, profile_picture_url, bio, location, timezone, 
+                       language_preference, is_active, is_verified, email_verified,
+                       phone_verified, last_login, created_at, updated_at
+                FROM useraccount
+                WHERE ${sql.join(conditions, sql` AND `)}
+                ORDER BY created_at DESC
+            `;
+        } else {
+            query = sql`
+                SELECT user_id, email, first_name, last_name, phone, date_of_birth,
+                       gender, profile_picture_url, bio, location, timezone, 
+                       language_preference, is_active, is_verified, email_verified,
+                       phone_verified, last_login, created_at, updated_at
+                FROM useraccount
+                ORDER BY created_at DESC
+            `;
+        }
+
+        const users = await query;
 
         res.status(200).json({
             message: 'Users retrieved successfully',
@@ -89,7 +148,10 @@ const getUserById = async (req, res) => {
         }
 
         const result = await sql`
-            SELECT user_id, email, role, full_name, created_at 
+            SELECT user_id, email, first_name, last_name, phone, date_of_birth,
+                   gender, profile_picture_url, cover_photo_url, bio, location, 
+                   timezone, language_preference, is_active, is_verified, email_verified,
+                   phone_verified, last_login, created_at, updated_at
             FROM useraccount 
             WHERE user_id = ${id}
         `;
@@ -117,7 +179,24 @@ const getUserById = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const { email, role, full_name } = req.body;
+        const { 
+            email, 
+            first_name, 
+            last_name, 
+            phone,
+            date_of_birth,
+            gender,
+            profile_picture_url,
+            cover_photo_url,
+            bio,
+            location,
+            timezone,
+            language_preference,
+            is_active,
+            is_verified,
+            email_verified,
+            phone_verified
+        } = req.body;
 
         if (!id || isNaN(id)) {
             return res.status(400).json({
@@ -125,44 +204,102 @@ const updateUser = async (req, res) => {
             });
         }
 
-        // Validate role if provided
-        if (role) {
-            const validRoles = ['learner', 'educator', 'admin', 'institution'];
-            if (!validRoles.includes(role)) {
+        // Validate gender if provided
+        if (gender) {
+            const validGenders = ['male', 'female', 'other', 'prefer_not_to_say'];
+            if (!validGenders.includes(gender)) {
                 return res.status(400).json({
-                    error: 'Invalid role. Must be one of: learner, educator, admin, institution'
+                    error: 'Invalid gender. Must be one of: male, female, other, prefer_not_to_say'
                 });
             }
         }
 
-        // Check if at least one field is provided
-        if (email === undefined && role === undefined && full_name === undefined) {
+        const updates = [];
+        const values = [id];
+        let paramIndex = 2;
+
+        if (email !== undefined) {
+            updates.push(`email = $${paramIndex++}`);
+            values.push(email);
+        }
+        if (first_name !== undefined) {
+            updates.push(`first_name = $${paramIndex++}`);
+            values.push(first_name);
+        }
+        if (last_name !== undefined) {
+            updates.push(`last_name = $${paramIndex++}`);
+            values.push(last_name);
+        }
+        if (phone !== undefined) {
+            updates.push(`phone = $${paramIndex++}`);
+            values.push(phone);
+        }
+        if (date_of_birth !== undefined) {
+            updates.push(`date_of_birth = $${paramIndex++}`);
+            values.push(date_of_birth);
+        }
+        if (gender !== undefined) {
+            updates.push(`gender = $${paramIndex++}`);
+            values.push(gender);
+        }
+        if (profile_picture_url !== undefined) {
+            updates.push(`profile_picture_url = $${paramIndex++}`);
+            values.push(profile_picture_url);
+        }
+        if (cover_photo_url !== undefined) {
+            updates.push(`cover_photo_url = $${paramIndex++}`);
+            values.push(cover_photo_url);
+        }
+        if (bio !== undefined) {
+            updates.push(`bio = $${paramIndex++}`);
+            values.push(bio);
+        }
+        if (location !== undefined) {
+            updates.push(`location = $${paramIndex++}`);
+            values.push(location);
+        }
+        if (timezone !== undefined) {
+            updates.push(`timezone = $${paramIndex++}`);
+            values.push(timezone);
+        }
+        if (language_preference !== undefined) {
+            updates.push(`language_preference = $${paramIndex++}`);
+            values.push(language_preference);
+        }
+        if (is_active !== undefined) {
+            updates.push(`is_active = $${paramIndex++}`);
+            values.push(is_active);
+        }
+        if (is_verified !== undefined) {
+            updates.push(`is_verified = $${paramIndex++}`);
+            values.push(is_verified);
+        }
+        if (email_verified !== undefined) {
+            updates.push(`email_verified = $${paramIndex++}`);
+            values.push(email_verified);
+        }
+        if (phone_verified !== undefined) {
+            updates.push(`phone_verified = $${paramIndex++}`);
+            values.push(phone_verified);
+        }
+
+        // Always update the updated_at timestamp
+        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
+        if (updates.length === 1) { // Only the updated_at was added
             return res.status(400).json({
                 error: 'No valid fields provided for update'
             });
         }
 
-        // First, get current user data
-        const currentUser = await sql`
-            SELECT email, role, full_name FROM useraccount WHERE user_id = ${id}
-        `;
-
-        if (currentUser.length === 0) {
-            return res.status(404).json({
-                error: 'User not found'
-            });
-        }
-
-        // Use current values for undefined fields
-        const updatedEmail = email !== undefined ? email : currentUser[0].email;
-        const updatedRole = role !== undefined ? role : currentUser[0].role;
-        const updatedFullName = full_name !== undefined ? full_name : currentUser[0].full_name;
-
         const result = await sql`
             UPDATE useraccount 
-            SET email = ${updatedEmail}, role = ${updatedRole}, full_name = ${updatedFullName}
+            SET ${sql.unsafe(updates.join(', '))}
             WHERE user_id = ${id}
-            RETURNING user_id, email, role, full_name, created_at
+            RETURNING user_id, email, first_name, last_name, phone, date_of_birth,
+                     gender, profile_picture_url, cover_photo_url, bio, location, 
+                     timezone, language_preference, is_active, is_verified, email_verified,
+                     phone_verified, created_at, updated_at
         `;
 
         if (result.length === 0) {
@@ -227,10 +364,176 @@ const deleteUser = async (req, res) => {
     }
 };
 
+// Get user roles
+const getUserRolesById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = parseInt(id);
+
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                error: 'Invalid user ID'
+            });
+        }
+
+        // Check if user exists
+        const users = await sql`
+            SELECT user_id, email, first_name, last_name 
+            FROM useraccount 
+            WHERE user_id = ${userId}
+        `;
+
+        if (users.length === 0) {
+            return res.status(404).json({
+                error: 'User not found'
+            });
+        }
+
+        const roles = await getUserRoles(userId);
+
+        res.status(200).json({
+            user_id: userId,
+            roles
+        });
+
+    } catch (error) {
+        console.error('Error fetching user roles:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+};
+
+// Assign or remove user roles (superadmin only)
+const manageUserRoles = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { action, role } = req.body; // action: 'add' or 'remove', role: 'learner', 'educator', etc.
+        const userId = parseInt(id);
+
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                error: 'Invalid user ID'
+            });
+        }
+
+        if (!action || !role) {
+            return res.status(400).json({
+                error: 'Action and role are required'
+            });
+        }
+
+        if (!['add', 'remove'].includes(action)) {
+            return res.status(400).json({
+                error: 'Action must be either "add" or "remove"'
+            });
+        }
+
+        const validRoles = ['learner', 'educator', 'institutionadmin', 'superadmin'];
+        if (!validRoles.includes(role)) {
+            return res.status(400).json({
+                error: `Invalid role. Must be one of: ${validRoles.join(', ')}`
+            });
+        }
+
+        // Check if user exists
+        const users = await sql`
+            SELECT user_id FROM useraccount WHERE user_id = ${userId}
+        `;
+
+        if (users.length === 0) {
+            return res.status(400).json({
+                error: 'User not found'
+            });
+        }
+
+        // Handle role assignment/removal
+        try {
+            if (action === 'add') {
+                // Add role by inserting into appropriate table
+                switch (role) {
+                    case 'learner':
+                        await sql`
+                            INSERT INTO learner (user_id, status, learning_streak, total_points, level)
+                            VALUES (${userId}, 'active', 0, 0, 1)
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                    case 'educator':
+                        await sql`
+                            INSERT INTO educator (user_id, verification_status)
+                            VALUES (${userId}, 'pending')
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                    case 'institutionadmin':
+                        // Note: institutionadmin requires institution_id, so we'll need to handle this carefully
+                        return res.status(400).json({
+                            error: 'Institution admin role requires additional setup. Use specific institution admin endpoints.'
+                        });
+                    case 'superadmin':
+                        await sql`
+                            INSERT INTO superadmin (user_id, access_level)
+                            VALUES (${userId}, 'full')
+                            ON CONFLICT (user_id) DO NOTHING
+                        `;
+                        break;
+                }
+            } else if (action === 'remove') {
+                // Remove role by deleting from appropriate table
+                switch (role) {
+                    case 'learner':
+                        await sql`DELETE FROM learner WHERE user_id = ${userId}`;
+                        break;
+                    case 'educator':
+                        await sql`DELETE FROM educator WHERE user_id = ${userId}`;
+                        break;
+                    case 'institutionadmin':
+                        await sql`DELETE FROM institutionadmin WHERE user_id = ${userId}`;
+                        break;
+                    case 'superadmin':
+                        await sql`DELETE FROM superadmin WHERE user_id = ${userId}`;
+                        break;
+                }
+            }
+
+            // Clear role cache for this user
+            clearUserRoleCache(userId);
+
+            // Get updated roles
+            const updatedRoles = await getUserRoles(userId);
+
+            res.status(200).json({
+                message: `Role ${action}ed successfully`,
+                user_id: userId,
+                action,
+                role,
+                current_roles: updatedRoles
+            });
+
+        } catch (dbError) {
+            if (dbError.code === '23503') {
+                return res.status(400).json({
+                    error: 'Foreign key constraint violation. User may not exist or role assignment failed.'
+                });
+            }
+            throw dbError;
+        }
+
+    } catch (error) {
+        console.error('Error managing user roles:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+};
+
 module.exports = {
     createUser,
     getAllUsers,
     getUserById,
     updateUser,
-    deleteUser
+    deleteUser,
+    getUserRolesById,
+    manageUserRoles
 };

@@ -1,17 +1,19 @@
 const sql = require('../../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { getUserRoles } = require('../../middleware/auth');
 
 // Get JWT secret from env
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Generate JWT token
-function generateToken(user) {
+// Generate JWT token with user roles
+async function generateToken(user) {
+  const roles = await getUserRoles(user.user_id);
   return jwt.sign(
     {
       user_id: user.user_id,
       email: user.email,
-      role: user.role
+      roles
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -31,7 +33,7 @@ const login = async (req, res) => {
 
     // Find user by email
     const users = await sql`
-      SELECT user_id, email, password, role, full_name, created_at
+      SELECT user_id, email, password, first_name, last_name, created_at
       FROM useraccount
       WHERE email = ${email}
     `;
@@ -52,15 +54,21 @@ const login = async (req, res) => {
       });
     }
 
-    // Generate token
-    const token = generateToken(user);
+    // Generate token with roles
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     // Return user data without password
     const { password: _, ...userWithoutPassword } = user;
 
     res.json({
       token,
-      user: userWithoutPassword
+      user: {
+        ...userWithoutPassword,
+        roles
+      }
     });
 
   } catch (error) {
@@ -74,7 +82,7 @@ const login = async (req, res) => {
 // Learner registration
 const register = async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { email, password, full_name, first_name, last_name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -86,23 +94,35 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    // Derive names
+    let firstName = first_name || null;
+    let lastName = last_name || null;
+    if ((!firstName || !lastName) && full_name) {
+      const parts = String(full_name).trim().split(/\s+/);
+      firstName = firstName || parts.shift() || null;
+      lastName = lastName || (parts.length ? parts.join(' ') : null);
+    }
+
     // Create user account
     const result = await sql`
-      INSERT INTO useraccount (email, password, role, full_name)
-      VALUES (${email}, ${hashedPassword}, 'learner', ${full_name || null})
-      RETURNING user_id, email, role, full_name, created_at
+      INSERT INTO useraccount (email, password, first_name, last_name)
+      VALUES (${email}, ${hashedPassword}, ${firstName}, ${lastName})
+      RETURNING user_id, email, first_name, last_name, created_at
     `;
 
     const user = result[0];
 
-    // Create learner profile
+    // Create learner profile (role is represented by presence in learner table)
     await sql`
-      INSERT INTO learner (id, progress_perc, status)
-      VALUES (${user.user_id}, 0, 'new')
+      INSERT INTO learner (user_id, status, learning_streak, total_points, level)
+      VALUES (${user.user_id}, 'active', 0, 0, 1)
     `;
 
-    // Generate token
-    const token = generateToken(user);
+    // Generate token with roles
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -110,8 +130,9 @@ const register = async (req, res) => {
       user: {
         user_id: user.user_id,
         email: user.email,
-        full_name: user.full_name,
-        role: user.role
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles
       }
     });
 
@@ -137,7 +158,7 @@ const me = async (req, res) => {
     const userId = req.user.user_id; // From auth middleware
 
     const users = await sql`
-      SELECT user_id, email, role, full_name, created_at
+      SELECT user_id, email, first_name, last_name, created_at
       FROM useraccount
       WHERE user_id = ${userId}
     `;
@@ -150,8 +171,14 @@ const me = async (req, res) => {
 
     const user = users[0];
     const { password: _, ...userWithoutPassword } = user;
+    
+    // Include roles from auth middleware
+    const roles = req.user.roles || [];
 
-    res.json(userWithoutPassword);
+    res.json({
+      ...userWithoutPassword,
+      roles
+    });
 
   } catch (error) {
     console.error('Error fetching user:', error);
@@ -171,11 +198,11 @@ module.exports = {
 /**
  * POST /api/auth/register-educator
  * body: { email: string, password: string, full_name?: string }
- * Creates a user with role 'educator' and returns token + user
+ * Creates a user and educator profile, and returns token + user
  */
 module.exports.registerEducator = async (req, res) => {
   try {
-    const { email, password, full_name } = req.body;
+    const { email, password, full_name, first_name, last_name } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
@@ -184,14 +211,29 @@ module.exports.registerEducator = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
+    let firstName = first_name || null;
+    let lastName = last_name || null;
+    if ((!firstName || !lastName) && full_name) {
+      const parts = String(full_name).trim().split(/\s+/);
+      firstName = firstName || parts.shift() || null;
+      lastName = lastName || (parts.length ? parts.join(' ') : null);
+    }
     const result = await sql`
-      INSERT INTO useraccount (email, password, role, full_name)
-      VALUES (${email}, ${hashedPassword}, 'educator', ${full_name || null})
-      RETURNING user_id, email, role, full_name, created_at
+      INSERT INTO useraccount (email, password, first_name, last_name)
+      VALUES (${email}, ${hashedPassword}, ${firstName}, ${lastName})
+      RETURNING user_id, email, first_name, last_name, created_at
     `;
 
     const user = result[0];
-    const token = generateToken(user);
+    // Create educator profile row
+    await sql`
+      INSERT INTO educator (user_id)
+      VALUES (${user.user_id})
+    `;
+    const token = await generateToken(user);
+    
+    // Get user roles for response
+    const roles = await getUserRoles(user.user_id);
 
     res.status(201).json({
       message: 'Educator registered successfully',
@@ -199,8 +241,9 @@ module.exports.registerEducator = async (req, res) => {
       user: {
         user_id: user.user_id,
         email: user.email,
-        full_name: user.full_name,
-        role: user.role
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles
       }
     });
   } catch (error) {

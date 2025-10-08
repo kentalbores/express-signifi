@@ -3,15 +3,17 @@ const sql = require('../../config/database');
 // Create a new course module
 const createCourseModule = async (req, res) => {
     try {
-        const { course_id, title, description } = req.body;
+        const { course_id, title, description, order_index } = req.body;
         if (!course_id || isNaN(course_id) || !title) {
             return res.status(400).json({ error: 'Missing required fields: course_id (number) and title are required' });
         }
 
+        const resolvedOrderIndex = (order_index !== undefined && !isNaN(order_index)) ? order_index : 1;
+
         const result = await sql`
-            INSERT INTO coursemodule (course_id, title, description)
-            VALUES (${course_id}, ${title}, ${description || null})
-            RETURNING module_id, course_id, title, description
+            INSERT INTO coursemodule (course_id, title, description, order_index)
+            VALUES (${course_id}, ${title}, ${description || null}, ${resolvedOrderIndex})
+            RETURNING module_id, course_id, title, description, order_index
         `;
 
         res.status(201).json({

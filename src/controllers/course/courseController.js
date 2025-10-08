@@ -1,14 +1,100 @@
 const sql = require('../../config/database');
 
+// Helper function to check content policy compliance
+const checkContentPolicyCompliance = async (courseData) => {
+    try {
+        // Get active content policies
+        const policies = await sql`
+            SELECT type, rules FROM content_policy 
+            WHERE is_active = true
+        `;
+
+        const violations = [];
+
+        for (const policy of policies) {
+            const rules = policy.rules || {};
+            
+            // Check for prohibited content based on policy type
+            if (policy.type === 'community') {
+                // Check title and description for inappropriate content
+                const textToCheck = `${courseData.title || ''} ${courseData.description || ''} ${courseData.short_description || ''}`.toLowerCase();
+                
+                if (rules.prohibited_words && Array.isArray(rules.prohibited_words)) {
+                    for (const word of rules.prohibited_words) {
+                        if (textToCheck.includes(word.toLowerCase())) {
+                            violations.push(`Contains prohibited content: "${word}"`);
+                        }
+                    }
+                }
+
+                if (rules.max_title_length && courseData.title && courseData.title.length > rules.max_title_length) {
+                    violations.push(`Title exceeds maximum length of ${rules.max_title_length} characters`);
+                }
+
+                if (rules.min_description_length && courseData.description && courseData.description.length < rules.min_description_length) {
+                    violations.push(`Description must be at least ${rules.min_description_length} characters`);
+                }
+            }
+
+            if (policy.type === 'general') {
+                // Check for required fields based on general policy
+                if (rules.require_thumbnail && !courseData.thumbnail_image_url) {
+                    violations.push('Thumbnail image is required');
+                }
+
+                if (rules.require_description && !courseData.description) {
+                    violations.push('Course description is required');
+                }
+
+                if (rules.min_price !== undefined && courseData.price < rules.min_price) {
+                    violations.push(`Course price must be at least ${rules.min_price}`);
+                }
+            }
+        }
+
+        return {
+            compliant: violations.length === 0,
+            violations: violations
+        };
+    } catch (error) {
+        console.error('Error checking content policy compliance:', error);
+        return {
+            compliant: true, // Default to compliant if we can't check
+            violations: []
+        };
+    }
+};
+
 // Create a new course
 const createCourse = async (req, res) => {
     try {
-        const { educator_id, institution_id, title, description, price, is_published } = req.body;
+        const { 
+            educator_id, 
+            institution_id, 
+            category_id,
+            title, 
+            slug,
+            short_description,
+            description, 
+            thumbnail_image_url,
+            promo_video_url,
+            price, 
+            discounted_price,
+            currency = 'USD',
+            difficulty_level,
+            estimated_duration_hours,
+            language = 'en',
+            requirements,
+            what_you_will_learn,
+            target_audience,
+            is_published = false,
+            is_featured = false
+        } = req.body;
 
         // Validate required fields
-        if (!educator_id || !title) {
+        if (!educator_id || !title || !slug) {
             return res.status(400).json({
-                error: 'Missing required fields: educator_id and title are required'
+                error: 'Missing required fields: educator_id, title, and slug are required'
             });
         }
 
@@ -25,6 +111,12 @@ const createCourse = async (req, res) => {
             });
         }
 
+        if (category_id && isNaN(category_id)) {
+            return res.status(400).json({
+                error: 'category_id must be a valid number'
+            });
+        }
+
         // Validate price if provided
         if (price && (isNaN(price) || price < 0)) {
             return res.status(400).json({
@@ -32,11 +124,46 @@ const createCourse = async (req, res) => {
             });
         }
 
+        // Validate difficulty level if provided
+        if (difficulty_level) {
+            const validLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
+            if (!validLevels.includes(difficulty_level)) {
+                return res.status(400).json({
+                    error: 'Invalid difficulty_level. Must be one of: beginner, intermediate, advanced, expert'
+                });
+            }
+        }
+
+        // Check content policy compliance
+        const courseData = {
+            title, description, short_description, thumbnail_image_url, price
+        };
+        const complianceCheck = await checkContentPolicyCompliance(courseData);
+        
+        if (!complianceCheck.compliant) {
+            return res.status(400).json({
+                error: 'Course content violates platform policies',
+                violations: complianceCheck.violations
+            });
+        }
+
         // Insert course into database
         const result = await sql`
-            INSERT INTO course (educator_id, institution_id, title, description, price, is_published)
-            VALUES (${educator_id}, ${institution_id || null}, ${title}, ${description || null}, ${price || 0.00}, ${is_published || false})
-            RETURNING course_id, educator_id, institution_id, title, description, price, is_published, created_at
+            INSERT INTO course (
+                educator_id, institution_id, category_id, title, slug, short_description,
+                description, thumbnail_image_url, promo_video_url, price, discounted_price,
+                currency, difficulty_level, estimated_duration_hours, language, requirements,
+                what_you_will_learn, target_audience, is_published, is_featured
+            )
+            VALUES (
+                ${educator_id}, ${institution_id || null}, ${category_id || null}, ${title}, 
+                ${slug}, ${short_description || null}, ${description || null}, 
+                ${thumbnail_image_url || null}, ${promo_video_url || null}, ${price || 0.00}, 
+                ${discounted_price || null}, ${currency}, ${difficulty_level || null}, 
+                ${estimated_duration_hours || null}, ${language}, ${requirements || null},
+                ${what_you_will_learn || null}, ${target_audience || null}, ${is_published}, ${is_featured}
+            )
+            RETURNING *
         `;
 
         const course = result[0];
@@ -49,22 +176,33 @@ const createCourse = async (req, res) => {
     } catch (error) {
         console.error('Error creating course:', error);
         
+        // Handle unique constraint violations
+        if (error.code === '23505') {
+            return res.status(400).json({
+                error: 'Course with this slug already exists'
+            });
+        }
+        
         // Handle foreign key constraint violations
         if (error.code === '23503') {
-            // Check constraint name in detail message if constraint property is not available
-            if (error.constraint === 'course_educator_id_fkey' || 
+            if (error.constraint === 'course_educator_fkey' || 
                 (error.detail && error.detail.includes('educator_id'))) {
                 return res.status(400).json({
                     error: 'Invalid educator_id: educator does not exist'
                 });
             }
-            if (error.constraint === 'course_institution_id_fkey' || 
+            if (error.constraint === 'course_institution_fkey' || 
                 (error.detail && error.detail.includes('institution_id'))) {
                 return res.status(400).json({
                     error: 'Invalid institution_id: institution does not exist'
                 });
             }
-            // Generic foreign key error if we can't determine which field
+            if (error.constraint === 'course_category_fkey' || 
+                (error.detail && error.detail.includes('category_id'))) {
+                return res.status(400).json({
+                    error: 'Invalid category_id: category does not exist'
+                });
+            }
             return res.status(400).json({
                 error: 'Foreign key constraint violation: Referenced record does not exist'
             });
@@ -76,21 +214,21 @@ const createCourse = async (req, res) => {
     }
 };
 
-// Get all courses
+// Get all courses with enhanced filtering and all fields
 const getAllCourses = async (req, res) => {
     try {
-        const { is_published, educator_id, institution_id } = req.query;
-
-        // Base query
-        let baseQuery = `
-            SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
-                   c.price, c.is_published, c.created_at,
-                   u.full_name as educator_name,
-                   i.name as institution_name
-            FROM course c
-            LEFT JOIN useraccount u ON c.educator_id = u.user_id
-            LEFT JOIN institution i ON c.institution_id = i.institution_id
-        `;
+        const { 
+            is_published, 
+            educator_id, 
+            institution_id, 
+            category_id,
+            difficulty_level,
+            is_featured,
+            language,
+            limit = 50, 
+            offset = 0,
+            search
+        } = req.query;
 
         // Build WHERE conditions
         const conditions = [];
@@ -108,18 +246,78 @@ const getAllCourses = async (req, res) => {
             conditions.push('c.institution_id = $' + (values.length + 1));
             values.push(institution_id);
         }
+        if (category_id) {
+            conditions.push('c.category_id = $' + (values.length + 1));
+            values.push(category_id);
+        }
+        if (difficulty_level) {
+            conditions.push('c.difficulty_level = $' + (values.length + 1));
+            values.push(difficulty_level);
+        }
+        if (is_featured !== undefined) {
+            conditions.push('c.is_featured = $' + (values.length + 1));
+            values.push(is_featured === 'true');
+        }
+        if (language) {
+            conditions.push('c.language = $' + (values.length + 1));
+            values.push(language);
+        }
+        if (search) {
+            conditions.push('(c.title ILIKE $' + (values.length + 1) + ' OR c.description ILIKE $' + (values.length + 1) + ')');
+            values.push(`%${search}%`);
+        }
+
+        // Base query with all fields
+        let baseQuery = `
+            SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
+                   c.price, c.discounted_price, c.currency, c.difficulty_level, 
+                   c.estimated_duration_hours, c.language, c.requirements, c.what_you_will_learn,
+                   c.target_audience, c.is_published, c.is_active, c.is_featured,
+                   c.enrollment_count, c.average_rating, c.total_reviews, c.last_updated,
+                   c.published_at, c.created_at, c.updated_at,
+                   (u.first_name || ' ' || u.last_name) as educator_name,
+                   i.name as institution_name,
+                   cc.name as category_name, cc.slug as category_slug
+            FROM course c
+            LEFT JOIN useraccount u ON c.educator_id = u.user_id
+            LEFT JOIN institution i ON c.institution_id = i.institution_id
+            LEFT JOIN course_category cc ON c.category_id = cc.category_id
+        `;
 
         if (conditions.length > 0) {
             baseQuery += ' WHERE ' + conditions.join(' AND ');
         }
         
-        baseQuery += ' ORDER BY c.created_at DESC';
+        baseQuery += ` ORDER BY 
+            CASE WHEN c.is_featured = true THEN 0 ELSE 1 END,
+            c.average_rating DESC, 
+            c.enrollment_count DESC,
+            c.created_at DESC
+            LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+        
+        values.push(parseInt(limit), parseInt(offset));
 
         const courses = await sql.unsafe(baseQuery, values);
 
+        // Get total count for pagination
+        const countQuery = `
+            SELECT COUNT(*) as total
+            FROM course c
+            ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}
+        `;
+        const countResult = await sql.unsafe(countQuery, values.slice(0, -2));
+        const total = parseInt(countResult[0].total);
+
         res.status(200).json({
             message: 'Courses retrieved successfully',
-            courses: courses
+            courses,
+            pagination: {
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                has_more: total > parseInt(offset) + parseInt(limit)
+            }
         });
 
     } catch (error) {
@@ -130,7 +328,7 @@ const getAllCourses = async (req, res) => {
     }
 };
 
-// Get course by ID
+// Get course by ID with complete details
 const getCourseById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -142,13 +340,23 @@ const getCourseById = async (req, res) => {
         }
 
         const result = await sql`
-            SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.description, 
-                   c.price, c.is_published, c.created_at,
-                   u.full_name as educator_name, u.email as educator_email,
-                   i.name as institution_name, i.email as institution_email
+            SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
+                   c.price, c.discounted_price, c.currency, c.difficulty_level, 
+                   c.estimated_duration_hours, c.language, c.requirements, c.what_you_will_learn,
+                   c.target_audience, c.is_published, c.is_active, c.is_featured,
+                   c.enrollment_count, c.average_rating, c.total_reviews, c.last_updated,
+                   c.published_at, c.created_at, c.updated_at,
+                   (u.first_name || ' ' || u.last_name) as educator_name, 
+                   u.email as educator_email, u.profile_picture_url as educator_avatar,
+                   i.name as institution_name, i.email as institution_email,
+                   i.website as institution_website, i.logo_url as institution_logo,
+                   cc.name as category_name, cc.slug as category_slug,
+                   cc.description as category_description, cc.icon_url as category_icon
             FROM course c
             LEFT JOIN useraccount u ON c.educator_id = u.user_id
             LEFT JOIN institution i ON c.institution_id = i.institution_id
+            LEFT JOIN course_category cc ON c.category_id = cc.category_id
             WHERE c.course_id = ${id}
         `;
 
@@ -158,9 +366,38 @@ const getCourseById = async (req, res) => {
             });
         }
 
+        // Get course modules and lessons count
+        const moduleStats = await sql`
+            SELECT 
+                COUNT(DISTINCT cm.module_id) as total_modules,
+                COUNT(DISTINCT l.lesson_id) as total_lessons,
+                SUM(l.estimated_duration_minutes) as total_duration_minutes
+            FROM coursemodule cm
+            LEFT JOIN lesson l ON cm.module_id = l.module_id AND l.is_active = true
+            WHERE cm.course_id = ${id} AND cm.is_active = true
+        `;
+
+        // Get recent course reviews
+        const recentReviews = await sql`
+            SELECT cr.review_id, cr.rating, cr.title, cr.comment, cr.created_at,
+                   (u.first_name || ' ' || u.last_name) as reviewer_name,
+                   u.profile_picture_url as reviewer_avatar
+            FROM course_review cr
+            LEFT JOIN useraccount u ON cr.learner_id = u.user_id
+            WHERE cr.course_id = ${id}
+            ORDER BY cr.created_at DESC
+            LIMIT 5
+        `;
+
+        const course = {
+            ...result[0],
+            stats: moduleStats[0],
+            recent_reviews: recentReviews
+        };
+
         res.status(200).json({
             message: 'Course retrieved successfully',
-            course: result[0]
+            course
         });
 
     } catch (error) {
@@ -175,7 +412,28 @@ const getCourseById = async (req, res) => {
 const updateCourse = async (req, res) => {
     try {
         const { id } = req.params;
-        const { educator_id, institution_id, title, description, price, is_published } = req.body;
+        const { 
+            educator_id, 
+            institution_id, 
+            category_id,
+            title, 
+            slug,
+            short_description,
+            description, 
+            thumbnail_image_url,
+            promo_video_url,
+            price, 
+            discounted_price,
+            currency,
+            difficulty_level,
+            estimated_duration_hours,
+            language,
+            requirements,
+            what_you_will_learn,
+            target_audience,
+            is_published,
+            is_featured
+        } = req.body;
 
         if (!id || isNaN(id)) {
             return res.status(400).json({
@@ -183,31 +441,56 @@ const updateCourse = async (req, res) => {
             });
         }
 
-        // Validate educator_id if provided
-        if (educator_id && isNaN(educator_id)) {
+        // Validate numeric fields if provided
+        if (educator_id !== undefined && isNaN(educator_id)) {
             return res.status(400).json({
                 error: 'educator_id must be a valid number'
             });
         }
 
-        // Validate institution_id if provided
-        if (institution_id && isNaN(institution_id)) {
+        if (institution_id !== undefined && isNaN(institution_id)) {
             return res.status(400).json({
                 error: 'institution_id must be a valid number'
             });
         }
 
+        if (category_id !== undefined && isNaN(category_id)) {
+            return res.status(400).json({
+                error: 'category_id must be a valid number'
+            });
+        }
+
         // Validate price if provided
-        if (price && (isNaN(price) || price < 0)) {
+        if (price !== undefined && (isNaN(price) || price < 0)) {
             return res.status(400).json({
                 error: 'price must be a valid positive number'
             });
         }
 
+        if (discounted_price !== undefined && (isNaN(discounted_price) || discounted_price < 0)) {
+            return res.status(400).json({
+                error: 'discounted_price must be a valid positive number'
+            });
+        }
+
+        // Validate difficulty level if provided
+        if (difficulty_level !== undefined) {
+            const validLevels = ['beginner', 'intermediate', 'advanced', 'expert'];
+            if (!validLevels.includes(difficulty_level)) {
+                return res.status(400).json({
+                    error: 'Invalid difficulty_level. Must be one of: beginner, intermediate, advanced, expert'
+                });
+            }
+        }
+
         // Check if at least one field is provided
-        if (educator_id === undefined && institution_id === undefined && 
-            title === undefined && description === undefined && 
-            price === undefined && is_published === undefined) {
+        if (educator_id === undefined && institution_id === undefined && category_id === undefined &&
+            title === undefined && slug === undefined && short_description === undefined &&
+            description === undefined && thumbnail_image_url === undefined && promo_video_url === undefined &&
+            price === undefined && discounted_price === undefined && currency === undefined &&
+            difficulty_level === undefined && estimated_duration_hours === undefined && language === undefined &&
+            requirements === undefined && what_you_will_learn === undefined && target_audience === undefined &&
+            is_published === undefined && is_featured === undefined) {
             return res.status(400).json({
                 error: 'No valid fields provided for update'
             });
@@ -215,7 +498,10 @@ const updateCourse = async (req, res) => {
 
         // First, get current course data
         const currentCourse = await sql`
-            SELECT educator_id, institution_id, title, description, price, is_published 
+            SELECT educator_id, institution_id, category_id, title, slug, short_description,
+                   description, thumbnail_image_url, promo_video_url, price, discounted_price,
+                   currency, difficulty_level, estimated_duration_hours, language, requirements,
+                   what_you_will_learn, target_audience, is_published, is_featured
             FROM course WHERE course_id = ${id}
         `;
 
@@ -225,24 +511,90 @@ const updateCourse = async (req, res) => {
             });
         }
 
+        const current = currentCourse[0];
+
         // Use current values for undefined fields
-        const updatedEducatorId = educator_id !== undefined ? educator_id : currentCourse[0].educator_id;
-        const updatedInstitutionId = institution_id !== undefined ? institution_id : currentCourse[0].institution_id;
-        const updatedTitle = title !== undefined ? title : currentCourse[0].title;
-        const updatedDescription = description !== undefined ? description : currentCourse[0].description;
-        const updatedPrice = price !== undefined ? price : currentCourse[0].price;
-        const updatedIsPublished = is_published !== undefined ? is_published : currentCourse[0].is_published;
+        const updatedEducatorId = educator_id !== undefined ? educator_id : current.educator_id;
+        const updatedInstitutionId = institution_id !== undefined ? institution_id : current.institution_id;
+        const updatedCategoryId = category_id !== undefined ? category_id : current.category_id;
+        const updatedTitle = title !== undefined ? title : current.title;
+        const updatedSlug = slug !== undefined ? slug : current.slug;
+        const updatedShortDescription = short_description !== undefined ? short_description : current.short_description;
+        const updatedDescription = description !== undefined ? description : current.description;
+        const updatedThumbnailImageUrl = thumbnail_image_url !== undefined ? thumbnail_image_url : current.thumbnail_image_url;
+        const updatedPromoVideoUrl = promo_video_url !== undefined ? promo_video_url : current.promo_video_url;
+        const updatedPrice = price !== undefined ? price : current.price;
+        const updatedDiscountedPrice = discounted_price !== undefined ? discounted_price : current.discounted_price;
+        const updatedCurrency = currency !== undefined ? currency : current.currency;
+        const updatedDifficultyLevel = difficulty_level !== undefined ? difficulty_level : current.difficulty_level;
+        const updatedEstimatedDurationHours = estimated_duration_hours !== undefined ? estimated_duration_hours : current.estimated_duration_hours;
+        const updatedLanguage = language !== undefined ? language : current.language;
+        const updatedRequirements = requirements !== undefined ? requirements : current.requirements;
+        const updatedWhatYouWillLearn = what_you_will_learn !== undefined ? what_you_will_learn : current.what_you_will_learn;
+        const updatedTargetAudience = target_audience !== undefined ? target_audience : current.target_audience;
+        const updatedIsPublished = is_published !== undefined ? is_published : current.is_published;
+        const updatedIsFeatured = is_featured !== undefined ? is_featured : current.is_featured;
+
+        // Check content policy compliance for updated data
+        const updatedCourseData = {
+            title: updatedTitle,
+            description: updatedDescription,
+            short_description: updatedShortDescription,
+            thumbnail_image_url: updatedThumbnailImageUrl,
+            price: updatedPrice
+        };
+        const complianceCheck = await checkContentPolicyCompliance(updatedCourseData);
+        
+        if (!complianceCheck.compliant) {
+            return res.status(400).json({
+                error: 'Updated course content violates platform policies',
+                violations: complianceCheck.violations
+            });
+        }
+
+        // Course approval workflow: if publishing for the first time, may require moderation
+        if (updatedIsPublished && !current.is_published) {
+            // Check if course requires moderation (can be enhanced based on rules)
+            const requiresModeration = await sql`
+                SELECT COUNT(*) as count FROM course_moderation 
+                WHERE course_id = ${id} AND status = 'approved'
+            `;
+            
+            if (requiresModeration[0].count === 0) {
+                // Create moderation entry if none exists
+                await sql`
+                    INSERT INTO course_moderation (course_id, admin_id, status, comments)
+                    VALUES (${id}, NULL, 'pending', 'Automatic review required for course publication')
+                    ON CONFLICT (course_id) DO NOTHING
+                `;
+            }
+        }
 
         const result = await sql`
             UPDATE course 
             SET educator_id = ${updatedEducatorId}, 
                 institution_id = ${updatedInstitutionId}, 
+                category_id = ${updatedCategoryId},
                 title = ${updatedTitle}, 
+                slug = ${updatedSlug},
+                short_description = ${updatedShortDescription},
                 description = ${updatedDescription}, 
+                thumbnail_image_url = ${updatedThumbnailImageUrl},
+                promo_video_url = ${updatedPromoVideoUrl},
                 price = ${updatedPrice}, 
-                is_published = ${updatedIsPublished}
+                discounted_price = ${updatedDiscountedPrice},
+                currency = ${updatedCurrency},
+                difficulty_level = ${updatedDifficultyLevel},
+                estimated_duration_hours = ${updatedEstimatedDurationHours},
+                language = ${updatedLanguage},
+                requirements = ${updatedRequirements},
+                what_you_will_learn = ${updatedWhatYouWillLearn},
+                target_audience = ${updatedTargetAudience},
+                is_published = ${updatedIsPublished},
+                is_featured = ${updatedIsFeatured},
+                last_updated = NOW()
             WHERE course_id = ${id}
-            RETURNING course_id, educator_id, institution_id, title, description, price, is_published, created_at
+            RETURNING *
         `;
 
         res.status(200).json({
@@ -255,7 +607,6 @@ const updateCourse = async (req, res) => {
         
         // Handle foreign key constraint violations
         if (error.code === '23503') {
-            // Check constraint name in detail message if constraint property is not available
             if (error.constraint === 'course_educator_id_fkey' || 
                 (error.detail && error.detail.includes('educator_id'))) {
                 return res.status(400).json({
@@ -268,9 +619,27 @@ const updateCourse = async (req, res) => {
                     error: 'Invalid institution_id: institution does not exist'
                 });
             }
-            // Generic foreign key error if we can't determine which field
+            if (error.constraint === 'course_category_id_fkey' || 
+                (error.detail && error.detail.includes('category_id'))) {
+                return res.status(400).json({
+                    error: 'Invalid category_id: category does not exist'
+                });
+            }
             return res.status(400).json({
                 error: 'Foreign key constraint violation: Referenced record does not exist'
+            });
+        }
+
+        // Handle unique constraint violations  
+        if (error.code === '23505') {
+            if (error.constraint === 'course_slug_key' || 
+                (error.detail && error.detail.includes('slug'))) {
+                return res.status(409).json({
+                    error: 'Course with this slug already exists'
+                });
+            }
+            return res.status(409).json({
+                error: 'Duplicate value violates unique constraint'
             });
         }
         
