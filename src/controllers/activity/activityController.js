@@ -114,21 +114,42 @@ const createActivity = async (req, res) => {
 const getAllActivities = async (req, res) => {
     try {
         const { user_id, lesson_id } = req.query;
-        let query = `
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
+        
+        if (user_id) {
+            conditions.push(sql`a.user_id = ${user_id}`);
+        }
+        if (lesson_id) {
+            conditions.push(sql`a.lesson_id = ${lesson_id}`);
+        }
+        if (req.query.status) {
+            conditions.push(sql`a.status = ${req.query.status}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const activities = await sql`
             SELECT a.activity_id, a.user_id, a.lesson_id, a.enrollment_id, a.status, a.progress_percentage,
                    a.time_spent_seconds, a.video_watch_time_seconds, a.last_position_seconds, a.last_accessed,
                    (u.first_name || ' ' || u.last_name) AS user_name, l.title AS lesson_title
             FROM learning_activity a
             LEFT JOIN useraccount u ON a.user_id = u.user_id
-            LEFT JOIN lesson l ON a.lesson_id = l.lesson_id`;
-        const conditions = [];
-        const values = [];
-        if (user_id) { conditions.push('a.user_id = $' + (values.length + 1)); values.push(user_id); }
-        if (lesson_id) { conditions.push('a.lesson_id = $' + (values.length + 1)); values.push(lesson_id); }
-        if (req.query.status) { conditions.push('a.status = $' + (values.length + 1)); values.push(req.query.status); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY a.last_accessed DESC';
-        const activities = await sql.unsafe(query, values);
+            LEFT JOIN lesson l ON a.lesson_id = l.lesson_id
+            ${whereClause}
+            ORDER BY a.last_accessed DESC
+        `;
+        
         res.status(200).json({ message: 'Activities retrieved successfully', activities });
     } catch (error) {
         console.error('Error fetching activities:', error);
@@ -245,7 +266,31 @@ const getActivityAnalytics = async (req, res) => {
             return res.status(400).json({ error: 'At least one filter parameter (user_id, lesson_id, or enrollment_id) is required' });
         }
         
-        let query = `
+        // Build additional AND conditions
+        let additionalConditions = sql``;
+        const conditions = [];
+        
+        if (user_id) {
+            conditions.push(sql`a.user_id = ${user_id}`);
+        }
+        if (lesson_id) {
+            conditions.push(sql`a.lesson_id = ${lesson_id}`);
+        }
+        if (enrollment_id) {
+            conditions.push(sql`a.enrollment_id = ${enrollment_id}`);
+        }
+        
+        // Combine conditions with AND (no WHERE prefix since there's already a WHERE clause)
+        if (conditions.length > 0) {
+            additionalConditions = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`AND ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const activities = await sql`
             SELECT 
                 a.activity_id, a.user_id, a.lesson_id, a.enrollment_id, a.status,
                 a.progress_percentage, a.time_spent_seconds, a.video_watch_time_seconds,
@@ -259,19 +304,9 @@ const getActivityAnalytics = async (req, res) => {
             LEFT JOIN useraccount u ON a.user_id = u.user_id
             LEFT JOIN selfstudy_lesson_performance slp ON a.lesson_id = slp.lesson_id AND a.user_id = slp.user_id
             WHERE l.material_type IN ('video', 'document', 'interactive')
+                ${additionalConditions}
+            ORDER BY a.last_accessed DESC
         `;
-        
-        const conditions = [];
-        const values = [];
-        
-        if (user_id) { conditions.push('a.user_id = $' + (values.length + 1)); values.push(user_id); }
-        if (lesson_id) { conditions.push('a.lesson_id = $' + (values.length + 1)); values.push(lesson_id); }
-        if (enrollment_id) { conditions.push('a.enrollment_id = $' + (values.length + 1)); values.push(enrollment_id); }
-        
-        if (conditions.length > 0) query += ' AND ' + conditions.join(' AND ');
-        query += ' ORDER BY a.last_accessed DESC';
-        
-        const activities = await sql.unsafe(query, values);
         
         // Calculate summary statistics
         const stats = {
@@ -302,7 +337,28 @@ const getVideoWatchingAnalytics = async (req, res) => {
     try {
         const { user_id, lesson_id } = req.query;
         
-        let query = `
+        // Build additional AND conditions
+        let additionalConditions = sql``;
+        const conditions = [];
+        
+        if (user_id) {
+            conditions.push(sql`a.user_id = ${user_id}`);
+        }
+        if (lesson_id) {
+            conditions.push(sql`a.lesson_id = ${lesson_id}`);
+        }
+        
+        // Combine conditions with AND (no WHERE prefix since there's already a WHERE clause)
+        if (conditions.length > 0) {
+            additionalConditions = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`AND ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const videoActivities = await sql`
             SELECT 
                 a.activity_id, a.user_id, a.lesson_id, a.video_watch_time_seconds,
                 a.last_position_seconds, a.progress_percentage, a.status, a.last_accessed,
@@ -315,18 +371,9 @@ const getVideoWatchingAnalytics = async (req, res) => {
             LEFT JOIN useraccount u ON a.user_id = u.user_id
             LEFT JOIN selfstudy_lesson_performance slp ON a.lesson_id = slp.lesson_id AND a.user_id = slp.user_id
             WHERE l.material_type = 'video'
+                ${additionalConditions}
+            ORDER BY a.last_accessed DESC
         `;
-        
-        const conditions = [];
-        const values = [];
-        
-        if (user_id) { conditions.push('a.user_id = $' + (values.length + 1)); values.push(user_id); }
-        if (lesson_id) { conditions.push('a.lesson_id = $' + (values.length + 1)); values.push(lesson_id); }
-        
-        if (conditions.length > 0) query += ' AND ' + conditions.join(' AND ');
-        query += ' ORDER BY a.last_accessed DESC';
-        
-        const videoActivities = await sql.unsafe(query, values);
         
         // Calculate video-specific metrics
         const videoStats = {

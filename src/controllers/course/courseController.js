@@ -217,58 +217,60 @@ const createCourse = async (req, res) => {
 // Get all courses with enhanced filtering and all fields
 const getAllCourses = async (req, res) => {
     try {
-        const { 
-            is_published, 
-            educator_id, 
-            institution_id, 
-            category_id,
-            difficulty_level,
-            is_featured,
-            language,
-            limit = 50, 
-            offset = 0,
-            search
-        } = req.query;
+    const { 
+        is_published, 
+        educator_id, 
+        institution_id, 
+        category_id,
+        difficulty_level,
+        is_featured,
+        language,
+        limit = 50, 
+        offset = 0,
+        search
+    } = req.query;
 
-        // Build WHERE conditions
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
         const conditions = [];
-        const values = [];
         
         if (is_published !== undefined) {
-            conditions.push('c.is_published = $' + (values.length + 1));
-            values.push(is_published === 'true');
+            conditions.push(sql`c.is_published = ${is_published === 'true'}`);
         }
         if (educator_id) {
-            conditions.push('c.educator_id = $' + (values.length + 1));
-            values.push(educator_id);
+            conditions.push(sql`c.educator_id = ${educator_id}`);
         }
         if (institution_id) {
-            conditions.push('c.institution_id = $' + (values.length + 1));
-            values.push(institution_id);
+            conditions.push(sql`c.institution_id = ${institution_id}`);
         }
         if (category_id) {
-            conditions.push('c.category_id = $' + (values.length + 1));
-            values.push(category_id);
+            conditions.push(sql`c.category_id = ${category_id}`);
         }
         if (difficulty_level) {
-            conditions.push('c.difficulty_level = $' + (values.length + 1));
-            values.push(difficulty_level);
+            conditions.push(sql`c.difficulty_level = ${difficulty_level}`);
         }
         if (is_featured !== undefined) {
-            conditions.push('c.is_featured = $' + (values.length + 1));
-            values.push(is_featured === 'true');
+            conditions.push(sql`c.is_featured = ${is_featured === 'true'}`);
         }
         if (language) {
-            conditions.push('c.language = $' + (values.length + 1));
-            values.push(language);
+            conditions.push(sql`c.language = ${language}`);
         }
         if (search) {
-            conditions.push('(c.title ILIKE $' + (values.length + 1) + ' OR c.description ILIKE $' + (values.length + 1) + ')');
-            values.push(`%${search}%`);
+            const searchPattern = `%${search}%`;
+            conditions.push(sql`(c.title ILIKE ${searchPattern} OR c.description ILIKE ${searchPattern})`);
         }
 
-        // Base query with all fields
-        let baseQuery = `
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const courses = await sql`
             SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
                    c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
                    c.price, c.discounted_price, c.currency, c.difficulty_level, 
@@ -283,30 +285,21 @@ const getAllCourses = async (req, res) => {
             LEFT JOIN useraccount u ON c.educator_id = u.user_id
             LEFT JOIN institution i ON c.institution_id = i.institution_id
             LEFT JOIN course_category cc ON c.category_id = cc.category_id
+            ${whereClause}
+            ORDER BY 
+                CASE WHEN c.is_featured = true THEN 0 ELSE 1 END,
+                c.average_rating DESC, 
+                c.enrollment_count DESC,
+                c.created_at DESC
+            LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
         `;
-
-        if (conditions.length > 0) {
-            baseQuery += ' WHERE ' + conditions.join(' AND ');
-        }
         
-        baseQuery += ` ORDER BY 
-            CASE WHEN c.is_featured = true THEN 0 ELSE 1 END,
-            c.average_rating DESC, 
-            c.enrollment_count DESC,
-            c.created_at DESC
-            LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
-        
-        values.push(parseInt(limit), parseInt(offset));
-
-        const courses = await sql.unsafe(baseQuery, values);
-
-        // Get total count for pagination
-        const countQuery = `
+        const countResult = await sql`
             SELECT COUNT(*) as total
             FROM course c
-            ${conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : ''}
+            ${whereClause}
         `;
-        const countResult = await sql.unsafe(countQuery, values.slice(0, -2));
+        
         const total = parseInt(countResult[0].total);
 
         res.status(200).json({

@@ -100,16 +100,12 @@ const updateSuperAdmin = async (req, res) => {
         } = req.body;
 
         const updates = [];
-        const values = [id];
-        let paramIndex = 2;
 
         if (access_level !== undefined) {
-            updates.push(`access_level = $${paramIndex++}`);
-            values.push(access_level);
+            updates.push(sql`access_level = ${access_level}`);
         }
         if (permissions !== undefined) {
-            updates.push(`permissions = $${paramIndex++}`);
-            values.push(JSON.stringify(permissions));
+            updates.push(sql`permissions = ${JSON.stringify(permissions)}`);
         }
 
         if (updates.length === 0) {
@@ -121,7 +117,7 @@ const updateSuperAdmin = async (req, res) => {
 
         const result = await sql`
             UPDATE superadmin 
-            SET ${sql.unsafe(updates.join(', '))}
+            SET ${sql(updates, ', ')}
             WHERE user_id = ${id}
             RETURNING *
         `;

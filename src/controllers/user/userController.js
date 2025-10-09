@@ -85,43 +85,36 @@ const getAllUsers = async (req, res) => {
     try {
         const { is_active, is_verified } = req.query;
         
-        let query = sql`
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
+        
+        if (is_active !== undefined) {
+            conditions.push(sql`is_active = ${is_active === 'true'}`);
+        }
+        if (is_verified !== undefined) {
+            conditions.push(sql`is_verified = ${is_verified === 'true'}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const users = await sql`
             SELECT user_id, email, first_name, last_name, phone, date_of_birth,
                    gender, profile_picture_url, bio, location, timezone, 
                    language_preference, is_active, is_verified, email_verified,
                    phone_verified, last_login, created_at, updated_at
             FROM useraccount
+            ${whereClause}
+            ORDER BY created_at DESC
         `;
-        
-        if (is_active !== undefined || is_verified !== undefined) {
-            const conditions = [];
-            if (is_active !== undefined) {
-                conditions.push(sql`is_active = ${is_active === 'true'}`);
-            }
-            if (is_verified !== undefined) {
-                conditions.push(sql`is_verified = ${is_verified === 'true'}`);
-            }
-            query = sql`
-                SELECT user_id, email, first_name, last_name, phone, date_of_birth,
-                       gender, profile_picture_url, bio, location, timezone, 
-                       language_preference, is_active, is_verified, email_verified,
-                       phone_verified, last_login, created_at, updated_at
-                FROM useraccount
-                WHERE ${sql.join(conditions, sql` AND `)}
-                ORDER BY created_at DESC
-            `;
-        } else {
-            query = sql`
-                SELECT user_id, email, first_name, last_name, phone, date_of_birth,
-                       gender, profile_picture_url, bio, location, timezone, 
-                       language_preference, is_active, is_verified, email_verified,
-                       phone_verified, last_login, created_at, updated_at
-                FROM useraccount
-                ORDER BY created_at DESC
-            `;
-        }
-
-        const users = await query;
 
         res.status(200).json({
             message: 'Users retrieved successfully',
@@ -215,76 +208,58 @@ const updateUser = async (req, res) => {
         }
 
         const updates = [];
-        const values = [id];
-        let paramIndex = 2;
 
         if (email !== undefined) {
-            updates.push(`email = $${paramIndex++}`);
-            values.push(email);
+            updates.push(sql`email = ${email}`);
         }
         if (first_name !== undefined) {
-            updates.push(`first_name = $${paramIndex++}`);
-            values.push(first_name);
+            updates.push(sql`first_name = ${first_name}`);
         }
         if (last_name !== undefined) {
-            updates.push(`last_name = $${paramIndex++}`);
-            values.push(last_name);
+            updates.push(sql`last_name = ${last_name}`);
         }
         if (phone !== undefined) {
-            updates.push(`phone = $${paramIndex++}`);
-            values.push(phone);
+            updates.push(sql`phone = ${phone}`);
         }
         if (date_of_birth !== undefined) {
-            updates.push(`date_of_birth = $${paramIndex++}`);
-            values.push(date_of_birth);
+            updates.push(sql`date_of_birth = ${date_of_birth}`);
         }
         if (gender !== undefined) {
-            updates.push(`gender = $${paramIndex++}`);
-            values.push(gender);
+            updates.push(sql`gender = ${gender}`);
         }
         if (profile_picture_url !== undefined) {
-            updates.push(`profile_picture_url = $${paramIndex++}`);
-            values.push(profile_picture_url);
+            updates.push(sql`profile_picture_url = ${profile_picture_url}`);
         }
         if (cover_photo_url !== undefined) {
-            updates.push(`cover_photo_url = $${paramIndex++}`);
-            values.push(cover_photo_url);
+            updates.push(sql`cover_photo_url = ${cover_photo_url}`);
         }
         if (bio !== undefined) {
-            updates.push(`bio = $${paramIndex++}`);
-            values.push(bio);
+            updates.push(sql`bio = ${bio}`);
         }
         if (location !== undefined) {
-            updates.push(`location = $${paramIndex++}`);
-            values.push(location);
+            updates.push(sql`location = ${location}`);
         }
         if (timezone !== undefined) {
-            updates.push(`timezone = $${paramIndex++}`);
-            values.push(timezone);
+            updates.push(sql`timezone = ${timezone}`);
         }
         if (language_preference !== undefined) {
-            updates.push(`language_preference = $${paramIndex++}`);
-            values.push(language_preference);
+            updates.push(sql`language_preference = ${language_preference}`);
         }
         if (is_active !== undefined) {
-            updates.push(`is_active = $${paramIndex++}`);
-            values.push(is_active);
+            updates.push(sql`is_active = ${is_active}`);
         }
         if (is_verified !== undefined) {
-            updates.push(`is_verified = $${paramIndex++}`);
-            values.push(is_verified);
+            updates.push(sql`is_verified = ${is_verified}`);
         }
         if (email_verified !== undefined) {
-            updates.push(`email_verified = $${paramIndex++}`);
-            values.push(email_verified);
+            updates.push(sql`email_verified = ${email_verified}`);
         }
         if (phone_verified !== undefined) {
-            updates.push(`phone_verified = $${paramIndex++}`);
-            values.push(phone_verified);
+            updates.push(sql`phone_verified = ${phone_verified}`);
         }
 
         // Always update the updated_at timestamp
-        updates.push(`updated_at = CURRENT_TIMESTAMP`);
+        updates.push(sql`updated_at = CURRENT_TIMESTAMP`);
 
         if (updates.length === 1) { // Only the updated_at was added
             return res.status(400).json({
@@ -294,7 +269,7 @@ const updateUser = async (req, res) => {
 
         const result = await sql`
             UPDATE useraccount 
-            SET ${sql.unsafe(updates.join(', '))}
+            SET ${sql(updates, ', ')}
             WHERE user_id = ${id}
             RETURNING user_id, email, first_name, last_name, phone, date_of_birth,
                      gender, profile_picture_url, cover_photo_url, bio, location, 

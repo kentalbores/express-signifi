@@ -68,45 +68,44 @@ const getAllContentPolicies = async (req, res) => {
     try {
         const { policy_type, is_active, limit = 50, offset = 0 } = req.query;
         
-        let whereConditions = [];
-        let queryParams = [];
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
         
         if (policy_type) {
-            whereConditions.push(`policy_type = $${queryParams.length + 1}`);
-            queryParams.push(policy_type);
+            conditions.push(sql`policy_type = ${policy_type}`);
         }
-        
         if (is_active !== undefined) {
-            whereConditions.push(`is_active = $${queryParams.length + 1}`);
-            queryParams.push(is_active === 'true');
+            conditions.push(sql`is_active = ${is_active === 'true'}`);
         }
 
-        let query = `
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const policies = await sql`
             SELECT cp.policy_id, cp.title, cp.content, cp.policy_type, cp.version, 
                    cp.is_active, cp.edited_by, cp.edited_at, cp.created_at,
                    u.first_name, u.last_name
             FROM content_policy cp
             LEFT JOIN useraccount u ON cp.edited_by = u.user_id
+            ${whereClause}
+            ORDER BY cp.created_at DESC 
+            LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
         `;
         
-        if (whereConditions.length > 0) {
-            query += ' WHERE ' + whereConditions.join(' AND ');
-        }
-        
-        query += ` ORDER BY cp.created_at DESC 
-                   LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
-        
-        queryParams.push(parseInt(limit), parseInt(offset));
-        
-        const policies = await sql.unsafe(query, queryParams);
-
-        // Get total count for pagination
-        const countQuery = `
+        const countResult = await sql`
             SELECT COUNT(*) as total
             FROM content_policy
-            ${whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : ''}
+            ${whereClause}
         `;
-        const countResult = await sql.unsafe(countQuery, queryParams.slice(0, -2));
+        
         const total = parseInt(countResult[0].total);
 
         res.status(200).json({
@@ -140,22 +139,20 @@ const getActivePoliciesByType = async (req, res) => {
             });
         }
 
-        let query;
-        let queryParams = [];
-
+        let policies;
+        
         if (type) {
-            query = `
+            policies = await sql`
                 SELECT cp.policy_id, cp.title, cp.content, cp.policy_type, cp.version, 
                        cp.is_active, cp.edited_by, cp.edited_at, cp.created_at,
                        u.first_name, u.last_name
                 FROM content_policy cp
                 LEFT JOIN useraccount u ON cp.edited_by = u.user_id
-                WHERE cp.is_active = true AND cp.policy_type = $1
+                WHERE cp.is_active = true AND cp.policy_type = ${type}
                 ORDER BY cp.version DESC, cp.created_at DESC
             `;
-            queryParams = [type];
         } else {
-            query = `
+            policies = await sql`
                 SELECT cp.policy_id, cp.title, cp.content, cp.policy_type, cp.version, 
                        cp.is_active, cp.edited_by, cp.edited_at, cp.created_at,
                        u.first_name, u.last_name
@@ -165,8 +162,6 @@ const getActivePoliciesByType = async (req, res) => {
                 ORDER BY cp.policy_type, cp.version DESC, cp.created_at DESC
             `;
         }
-
-        const policies = await sql.unsafe(query, queryParams);
 
         res.status(200).json({
             message: 'Active content policies retrieved successfully',

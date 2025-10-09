@@ -32,15 +32,27 @@ const createFeedback = async (req, res) => {
 const getAllFeedback = async (req, res) => {
     try {
         const { course_id } = req.query;
-        let query = `
-            SELECT r.review_id as feedback_id, r.course_id, r.learner_id as user_id, r.enrollment_id, r.rating, r.title, r.comment, r.is_featured, r.is_verified_purchase, r.created_at,
-                   c.title AS course_title
-            FROM course_review r
-            LEFT JOIN course c ON r.course_id = c.course_id`;
-        const values = [];
-        if (course_id) { query += ' WHERE r.course_id = $1'; values.push(course_id); }
-        query += ' ORDER BY r.created_at DESC';
-        const feedback = await sql.unsafe(query, values);
+        
+        let feedback;
+        if (course_id) {
+            feedback = await sql`
+                SELECT r.review_id as feedback_id, r.course_id, r.learner_id as user_id, r.enrollment_id, r.rating, r.title, r.comment, r.is_featured, r.is_verified_purchase, r.created_at,
+                       c.title AS course_title
+                FROM course_review r
+                LEFT JOIN course c ON r.course_id = c.course_id
+                WHERE r.course_id = ${course_id}
+                ORDER BY r.created_at DESC
+            `;
+        } else {
+            feedback = await sql`
+                SELECT r.review_id as feedback_id, r.course_id, r.learner_id as user_id, r.enrollment_id, r.rating, r.title, r.comment, r.is_featured, r.is_verified_purchase, r.created_at,
+                       c.title AS course_title
+                FROM course_review r
+                LEFT JOIN course c ON r.course_id = c.course_id
+                ORDER BY r.created_at DESC
+            `;
+        }
+        
         res.status(200).json({ message: 'Feedback retrieved successfully', feedback });
     } catch (error) {
         console.error('Error fetching feedback:', error);

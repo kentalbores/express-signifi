@@ -150,45 +150,42 @@ const getUserPerformance = async (req, res) => {
             });
         }
 
-        let whereConditions = ['user_id = $1'];
-        let queryParams = [userId];
+        // Build WHERE conditions dynamically
+        const conditions = [sql`user_id = ${userId}`];
 
         if (lesson_identifier) {
-            whereConditions.push(`lesson_identifier = $${queryParams.length + 1}`);
-            queryParams.push(lesson_identifier);
+            conditions.push(sql`lesson_identifier = ${lesson_identifier}`);
         }
-
         if (lesson_type) {
-            whereConditions.push(`lesson_type = $${queryParams.length + 1}`);
-            queryParams.push(lesson_type);
+            conditions.push(sql`lesson_type = ${lesson_type}`);
         }
-
         if (is_completed !== undefined) {
-            whereConditions.push(`is_completed = $${queryParams.length + 1}`);
-            queryParams.push(is_completed === 'true');
+            conditions.push(sql`is_completed = ${is_completed === 'true'}`);
         }
 
-        const query = `
+        // Combine conditions with AND
+        const whereClause = conditions.reduce((acc, condition, index) => {
+            if (index === 0) {
+                return sql`WHERE ${condition}`;
+            }
+            return sql`${acc} AND ${condition}`;
+        }, sql``);
+
+        const performances = await sql`
             SELECT performance_id, user_id, lesson_identifier, lesson_type, score, 
                    max_score, percentage, time_spent_seconds, performance_data,
                    completed_levels, is_completed, attempt_number, started_at, completed_at
             FROM selfstudy_lesson_performance
-            WHERE ${whereConditions.join(' AND ')}
+            ${whereClause}
             ORDER BY started_at DESC, attempt_number DESC
-            LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+            LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
         `;
 
-        queryParams.push(parseInt(limit), parseInt(offset));
-
-        const performances = await sql.unsafe(query, queryParams);
-
-        // Get total count for pagination
-        const countQuery = `
+        const countResult = await sql`
             SELECT COUNT(*) as total
             FROM selfstudy_lesson_performance
-            WHERE ${whereConditions.slice(0, -2).join(' AND ')}
+            ${whereClause}
         `;
-        const countResult = await sql.unsafe(countQuery, queryParams.slice(0, -2));
         const total = parseInt(countResult[0].total);
 
         res.status(200).json({

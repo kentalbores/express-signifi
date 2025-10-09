@@ -26,19 +26,38 @@ const createGameAttempt = async (req, res) => {
 const getAllGameAttempts = async (req, res) => {
     try {
         const { user_id, game_id } = req.query;
-        let query = `
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
+        
+        if (user_id) {
+            conditions.push(sql`ga.user_id = ${user_id}`);
+        }
+        if (game_id) {
+            conditions.push(sql`ga.game_id = ${game_id}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const game_attempts = await sql`
             SELECT ga.attempt_id as game_attempt_id, ga.user_id, ga.game_id, ga.score, ga.played_at,
                    (u.first_name || ' ' || u.last_name) AS user_name, g.name AS game_name
             FROM game_attempt ga
             LEFT JOIN useraccount u ON ga.user_id = u.user_id
-            LEFT JOIN minigame g ON ga.game_id = g.game_id`;
-        const conditions = [];
-        const values = [];
-        if (user_id) { conditions.push('ga.user_id = $' + (values.length + 1)); values.push(user_id); }
-        if (game_id) { conditions.push('ga.game_id = $' + (values.length + 1)); values.push(game_id); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY ga.played_at DESC';
-        const game_attempts = await sql.unsafe(query, values);
+            LEFT JOIN minigame g ON ga.game_id = g.game_id
+            ${whereClause}
+            ORDER BY ga.played_at DESC
+        `;
+        
         res.status(200).json({ message: 'Game attempts retrieved successfully', game_attempts });
     } catch (error) {
         console.error('Error fetching game attempts:', error);

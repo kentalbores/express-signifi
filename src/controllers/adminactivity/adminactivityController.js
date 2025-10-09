@@ -26,14 +26,35 @@ const createAdminActivity = async (req, res) => {
 const getAllAdminActivities = async (req, res) => {
     try {
         const { admin_id, target_table } = req.query;
-        let query = 'SELECT log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at FROM admin_activity_log';
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
         const conditions = [];
-        const values = [];
-        if (admin_id) { conditions.push('admin_id = $' + (values.length + 1)); values.push(admin_id); }
-        if (target_table) { conditions.push('target_table = $' + (values.length + 1)); values.push(target_table); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY created_at DESC';
-        const activities = await sql.unsafe(query, values);
+        
+        if (admin_id) {
+            conditions.push(sql`admin_id = ${admin_id}`);
+        }
+        if (target_table) {
+            conditions.push(sql`target_table = ${target_table}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const activities = await sql`
+            SELECT log_id, admin_id, action, target_table, target_id, old_values, new_values, ip_address, user_agent, created_at 
+            FROM admin_activity_log
+            ${whereClause}
+            ORDER BY created_at DESC
+        `;
+        
         res.status(200).json({ message: 'Admin activities retrieved successfully', activities });
     } catch (error) {
         console.error('Error fetching admin activities:', error);

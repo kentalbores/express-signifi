@@ -10,19 +10,19 @@ const getUsersByRole = async (roles, institutionId = null) => {
         }
         
         if (roles.includes('educator')) {
-            let educatorQuery = `SELECT user_id FROM educator`;
             if (institutionId) {
-                educatorQuery += ` WHERE institution_id = ${institutionId}`;
+                userQueries.push(sql`SELECT user_id FROM educator WHERE institution_id = ${institutionId}`);
+            } else {
+                userQueries.push(sql`SELECT user_id FROM educator`);
             }
-            userQueries.push(sql.unsafe(educatorQuery));
         }
         
         if (roles.includes('institutionadmin')) {
-            let adminQuery = `SELECT user_id FROM institutionadmin`;
             if (institutionId) {
-                adminQuery += ` WHERE institution_id = ${institutionId}`;
+                userQueries.push(sql`SELECT user_id FROM institutionadmin WHERE institution_id = ${institutionId}`);
+            } else {
+                userQueries.push(sql`SELECT user_id FROM institutionadmin`);
             }
-            userQueries.push(sql.unsafe(adminQuery));
         }
         
         if (roles.includes('superadmin')) {
@@ -104,14 +104,35 @@ const createNotification = async (req, res) => {
 const getAllNotifications = async (req, res) => {
     try {
         const { user_id, is_read } = req.query;
-        let query = 'SELECT notification_id, user_id, template_id, title, message, type, action_url, action_data, is_read, created_at FROM notification';
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
         const conditions = [];
-        const values = [];
-        if (user_id) { conditions.push('user_id = $' + (values.length + 1)); values.push(user_id); }
-        if (is_read !== undefined) { conditions.push('is_read = $' + (values.length + 1)); values.push(is_read === 'true'); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY created_at DESC';
-        const notifications = await sql.unsafe(query, values);
+        
+        if (user_id) {
+            conditions.push(sql`user_id = ${user_id}`);
+        }
+        if (is_read !== undefined) {
+            conditions.push(sql`is_read = ${is_read === 'true'}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const notifications = await sql`
+            SELECT notification_id, user_id, template_id, title, message, type, action_url, action_data, is_read, created_at 
+            FROM notification
+            ${whereClause}
+            ORDER BY created_at DESC
+        `;
+        
         res.status(200).json({ message: 'Notifications retrieved successfully', notifications });
     } catch (error) {
         console.error('Error fetching notifications:', error);

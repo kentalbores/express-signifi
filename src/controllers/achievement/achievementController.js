@@ -26,17 +26,31 @@ const createAchievement = async (req, res) => {
 const getAllAchievements = async (req, res) => {
     try {
         const { user_id } = req.query;
-        let query = `
-            SELECT a.achievement_id, a.user_id, a.achievement_def_id, a.progress_data, a.is_completed, a.points_earned, a.earned_at, a.created_at,
-                   (u.first_name || ' ' || u.last_name) AS user_name,
-                   d.name as definition_name, d.description as definition_description, d.category, d.icon_url, d.badge_color, d.points_reward
-            FROM user_achievement a
-            LEFT JOIN useraccount u ON a.user_id = u.user_id
-            LEFT JOIN achievement_definition d ON a.achievement_def_id = d.achievement_def_id`;
-        const values = [];
-        if (user_id) { query += ' WHERE a.user_id = $1'; values.push(user_id); }
-        query += ' ORDER BY a.created_at DESC';
-        const achievements = await sql.unsafe(query, values);
+        
+        let achievements;
+        if (user_id) {
+            achievements = await sql`
+                SELECT a.achievement_id, a.user_id, a.achievement_def_id, a.progress_data, a.is_completed, a.points_earned, a.earned_at, a.created_at,
+                       (u.first_name || ' ' || u.last_name) AS user_name,
+                       d.name as definition_name, d.description as definition_description, d.category, d.icon_url, d.badge_color, d.points_reward
+                FROM user_achievement a
+                LEFT JOIN useraccount u ON a.user_id = u.user_id
+                LEFT JOIN achievement_definition d ON a.achievement_def_id = d.achievement_def_id
+                WHERE a.user_id = ${user_id}
+                ORDER BY a.created_at DESC
+            `;
+        } else {
+            achievements = await sql`
+                SELECT a.achievement_id, a.user_id, a.achievement_def_id, a.progress_data, a.is_completed, a.points_earned, a.earned_at, a.created_at,
+                       (u.first_name || ' ' || u.last_name) AS user_name,
+                       d.name as definition_name, d.description as definition_description, d.category, d.icon_url, d.badge_color, d.points_reward
+                FROM user_achievement a
+                LEFT JOIN useraccount u ON a.user_id = u.user_id
+                LEFT JOIN achievement_definition d ON a.achievement_def_id = d.achievement_def_id
+                ORDER BY a.created_at DESC
+            `;
+        }
+        
         res.status(200).json({ message: 'Achievements retrieved successfully', achievements });
     } catch (error) {
         console.error('Error fetching achievements:', error);

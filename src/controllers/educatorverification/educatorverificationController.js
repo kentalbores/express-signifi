@@ -32,15 +32,38 @@ const createEducatorVerification = async (req, res) => {
 const getAllEducatorVerifications = async (req, res) => {
     try {
         const { educator_id, institution_id, status } = req.query;
-        let query = 'SELECT verification_id, educator_id, institution_id, status, submitted_at FROM educatorverification';
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
         const conditions = [];
-        const values = [];
-        if (educator_id) { conditions.push('educator_id = $' + (values.length + 1)); values.push(educator_id); }
-        if (institution_id) { conditions.push('institution_id = $' + (values.length + 1)); values.push(institution_id); }
-        if (status) { conditions.push('status = $' + (values.length + 1)); values.push(status); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY submitted_at DESC';
-        const verifications = await sql.unsafe(query, values);
+        
+        if (educator_id) {
+            conditions.push(sql`educator_id = ${educator_id}`);
+        }
+        if (institution_id) {
+            conditions.push(sql`institution_id = ${institution_id}`);
+        }
+        if (status) {
+            conditions.push(sql`status = ${status}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const verifications = await sql`
+            SELECT verification_id, educator_id, institution_id, status, submitted_at 
+            FROM educatorverification
+            ${whereClause}
+            ORDER BY submitted_at DESC
+        `;
+        
         res.status(200).json({ message: 'Educator verifications retrieved successfully', verifications });
     } catch (error) {
         console.error('Error fetching educator verifications:', error);
