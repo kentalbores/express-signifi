@@ -20,6 +20,7 @@ const recordPerformance = async (req, res) => {
         // Validate required fields
         if (!user_id || !lesson_identifier) {
             return res.status(400).json({
+                success: false,
                 error: 'Missing required fields: user_id and lesson_identifier are required'
             });
         }
@@ -27,12 +28,14 @@ const recordPerformance = async (req, res) => {
         // Validate score and percentage constraints
         if (score < 0 || (max_score && score > max_score)) {
             return res.status(400).json({
+                success: false,
                 error: 'Score must be non-negative and not exceed max_score'
             });
         }
 
         if (max_score <= 0) {
             return res.status(400).json({
+                success: false,
                 error: 'max_score must be greater than 0'
             });
         }
@@ -42,6 +45,7 @@ const recordPerformance = async (req, res) => {
 
         if (calculatedPercentage < 0 || calculatedPercentage > 100) {
             return res.status(400).json({
+                success: false,
                 error: 'Percentage must be between 0 and 100'
             });
         }
@@ -121,6 +125,7 @@ const recordPerformance = async (req, res) => {
         }
 
         res.status(201).json({
+            success: true,
             message: 'Performance recorded successfully',
             performance: result[0]
         });
@@ -129,10 +134,12 @@ const recordPerformance = async (req, res) => {
         console.error('Error recording performance:', error);
         if (error.code === '23503') {
             return res.status(400).json({
+                success: false,
                 error: 'Invalid user_id: user does not exist'
             });
         }
         res.status(500).json({
+            success: false,
             error: 'Internal server error'
         });
     }
@@ -146,6 +153,7 @@ const getUserPerformance = async (req, res) => {
 
         if (!userId || isNaN(userId)) {
             return res.status(400).json({
+                success: false,
                 error: 'Invalid user ID'
             });
         }
@@ -189,6 +197,7 @@ const getUserPerformance = async (req, res) => {
         const total = parseInt(countResult[0].total);
 
         res.status(200).json({
+            success: true,
             message: 'User performance retrieved successfully',
             performances,
             pagination: {
@@ -202,6 +211,7 @@ const getUserPerformance = async (req, res) => {
     } catch (error) {
         console.error('Error fetching user performance:', error);
         res.status(500).json({
+            success: false,
             error: 'Internal server error'
         });
     }
@@ -214,6 +224,7 @@ const getLessonPerformanceStats = async (req, res) => {
 
         if (!lessonId) {
             return res.status(400).json({
+                success: false,
                 error: 'Lesson identifier is required'
             });
         }
@@ -271,6 +282,7 @@ const getLessonPerformanceStats = async (req, res) => {
         };
 
         res.status(200).json({
+            success: true,
             message: 'Lesson performance statistics retrieved successfully',
             stats: result
         });
@@ -278,6 +290,7 @@ const getLessonPerformanceStats = async (req, res) => {
     } catch (error) {
         console.error('Error fetching lesson performance stats:', error);
         res.status(500).json({
+            success: false,
             error: 'Internal server error'
         });
     }
@@ -290,6 +303,7 @@ const deletePerformance = async (req, res) => {
 
         if (!performanceId || isNaN(performanceId)) {
             return res.status(400).json({
+                success: false,
                 error: 'Invalid performance ID'
             });
         }
@@ -302,17 +316,20 @@ const deletePerformance = async (req, res) => {
 
         if (result.length === 0) {
             return res.status(404).json({
+                success: false,
                 error: 'Performance record not found'
             });
         }
 
         res.status(200).json({
+            success: true,
             message: 'Performance record deleted successfully'
         });
 
     } catch (error) {
         console.error('Error deleting performance:', error);
         res.status(500).json({
+            success: false,
             error: 'Internal server error'
         });
     }
