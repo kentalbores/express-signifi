@@ -35,6 +35,7 @@ const selfStudyPerformanceRoutes = require('./routes/selfstudy/selfStudyPerforma
 const contentPolicyRoutes = require('./routes/contentpolicy/contentPolicyRoutes');
 const analyticsRoutes = require('./routes/analytics/analyticsRoutes');
 const { paymentsRouter, stripeWebhookHandler } = require('./routes/payment/paymentRoutes');
+const fileStorageRoutes = require('./routes/filestorage/fileStorageRoutes');
 
 // Stripe webhook must use raw body BEFORE express.json()
 app.post('/api/payments/webhook', bodyParser.raw({ type: 'application/json' }), stripeWebhookHandler);
@@ -96,6 +97,7 @@ app.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
 app.use('/api/content-policies', contentPolicyRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payments', paymentsRouter);
+app.use('/api/files', fileStorageRoutes);
 
 // Start server
 app.listen(PORT, () => {
