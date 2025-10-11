@@ -204,6 +204,31 @@ const requireAdminRole = (req, res, next) => {
   }
 };
 
+// Generic middleware to require any of the specified roles
+const requireRole = (allowedRoles) => {
+  return (req, res, next) => {
+    try {
+      const userRoles = req.user && req.user.roles;
+      if (!req.user || !req.user.user_id) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+      
+      if (!hasAnyRole(userRoles, allowedRoles)) {
+        return res.status(403).json({ 
+          error: 'Access denied. Required role not found.',
+          required_roles: allowedRoles,
+          user_roles: userRoles || []
+        });
+      }
+      
+      next();
+    } catch (error) {
+      console.error('Error in requireRole middleware:', error);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+};
+
 // Legacy alias for backward compatibility
 const requireAdmin = requireSuperAdmin;
 
@@ -218,5 +243,6 @@ module.exports = {
   requireSuperAdmin,
   requireInstitutionAdmin,
   requireAdminRole,
+  requireRole, // Generic role middleware
   requireAdmin // Legacy alias
 };
