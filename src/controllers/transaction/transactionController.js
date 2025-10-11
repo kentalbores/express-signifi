@@ -29,11 +29,23 @@ const createTransaction = async (req, res) => {
 const getAllTransactions = async (req, res) => {
     try {
         const { status } = req.query;
-        let query = 'SELECT transaction_id, method, amount, status, created_at FROM "transaction"';
-        const values = [];
-        if (status) { query += ' WHERE status = $1'; values.push(status); }
-        query += ' ORDER BY created_at DESC';
-        const transactions = await sql.unsafe(query, values);
+        
+        let transactions;
+        if (status) {
+            transactions = await sql`
+                SELECT transaction_id, method, amount, status, created_at 
+                FROM "transaction"
+                WHERE status = ${status}
+                ORDER BY created_at DESC
+            `;
+        } else {
+            transactions = await sql`
+                SELECT transaction_id, method, amount, status, created_at 
+                FROM "transaction"
+                ORDER BY created_at DESC
+            `;
+        }
+        
         res.status(200).json({ message: 'Transactions retrieved successfully', transactions });
     } catch (error) {
         console.error('Error fetching transactions:', error);

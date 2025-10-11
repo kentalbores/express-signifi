@@ -157,19 +157,38 @@ const createEnrollment = async (req, res) => {
 const getAllEnrollments = async (req, res) => {
     try {
         const { learner_id, course_id } = req.query;
-        let query = `
+        
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
+        
+        if (learner_id) {
+            conditions.push(sql`e.learner_id = ${learner_id}`);
+        }
+        if (course_id) {
+            conditions.push(sql`e.course_id = ${course_id}`);
+        }
+        
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const enrollments = await sql`
             SELECT e.enrollment_id as enroll_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
                    (u.first_name || ' ' || u.last_name) AS learner_name, c.title AS course_title
             FROM enrollment e
             LEFT JOIN useraccount u ON e.learner_id = u.user_id
-            LEFT JOIN course c ON e.course_id = c.course_id`;
-        const conditions = [];
-        const values = [];
-        if (learner_id) { conditions.push('e.learner_id = $' + (values.length + 1)); values.push(learner_id); }
-        if (course_id) { conditions.push('e.course_id = $' + (values.length + 1)); values.push(course_id); }
-        if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-        query += ' ORDER BY e.enrolled_at DESC';
-        const enrollments = await sql.unsafe(query, values);
+            LEFT JOIN course c ON e.course_id = c.course_id
+            ${whereClause}
+            ORDER BY e.enrolled_at DESC
+        `;
+        
         res.status(200).json({ message: 'Enrollments retrieved successfully', enrollments });
     } catch (error) {
         console.error('Error fetching enrollments:', error);

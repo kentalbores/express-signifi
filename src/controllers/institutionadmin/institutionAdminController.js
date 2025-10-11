@@ -141,32 +141,24 @@ const updateInstitutionAdmin = async (req, res) => {
         } = req.body;
 
         const updates = [];
-        const values = [id];
-        let paramIndex = 2;
 
         if (contact_email !== undefined) {
-            updates.push(`contact_email = $${paramIndex++}`);
-            values.push(contact_email);
+            updates.push(sql`contact_email = ${contact_email}`);
         }
         if (department !== undefined) {
-            updates.push(`department = $${paramIndex++}`);
-            values.push(department);
+            updates.push(sql`department = ${department}`);
         }
         if (role_title !== undefined) {
-            updates.push(`role_title = $${paramIndex++}`);
-            values.push(role_title);
+            updates.push(sql`role_title = ${role_title}`);
         }
         if (permissions !== undefined) {
-            updates.push(`permissions = $${paramIndex++}`);
-            values.push(JSON.stringify(permissions));
+            updates.push(sql`permissions = ${JSON.stringify(permissions)}`);
         }
         if (verification_status !== undefined) {
-            updates.push(`verification_status = $${paramIndex++}`);
-            values.push(verification_status);
+            updates.push(sql`verification_status = ${verification_status}`);
         }
         if (verified_by !== undefined) {
-            updates.push(`verified_by = $${paramIndex++}, verified_at = CURRENT_TIMESTAMP`);
-            values.push(verified_by);
+            updates.push(sql`verified_by = ${verified_by}, verified_at = CURRENT_TIMESTAMP`);
         }
 
         if (updates.length === 0) {
@@ -178,7 +170,7 @@ const updateInstitutionAdmin = async (req, res) => {
 
         const result = await sql`
             UPDATE institutionadmin 
-            SET ${sql.unsafe(updates.join(', '))}
+            SET ${sql(updates, ', ')}
             WHERE user_id = ${id}
             RETURNING *
         `;

@@ -153,56 +153,42 @@ const updateEducator = async (req, res) => {
         } = req.body;
 
         const updates = [];
-        const values = [id];
-        let paramIndex = 2;
 
         if (institution_id !== undefined) {
-            updates.push(`institution_id = $${paramIndex++}`);
-            values.push(institution_id);
+            updates.push(sql`institution_id = ${institution_id}`);
         }
         if (employee_id !== undefined) {
-            updates.push(`employee_id = $${paramIndex++}`);
-            values.push(employee_id);
+            updates.push(sql`employee_id = ${employee_id}`);
         }
         if (title !== undefined) {
-            updates.push(`title = $${paramIndex++}`);
-            values.push(title);
+            updates.push(sql`title = ${title}`);
         }
         if (bio !== undefined) {
-            updates.push(`bio = $${paramIndex++}`);
-            values.push(bio);
+            updates.push(sql`bio = ${bio}`);
         }
         if (specialization !== undefined) {
-            updates.push(`specialization = $${paramIndex++}`);
-            values.push(specialization);
+            updates.push(sql`specialization = ${specialization}`);
         }
         if (qualifications !== undefined) {
-            updates.push(`qualifications = $${paramIndex++}`);
-            values.push(qualifications);
+            updates.push(sql`qualifications = ${qualifications}`);
         }
         if (years_experience !== undefined) {
-            updates.push(`years_experience = $${paramIndex++}`);
-            values.push(years_experience);
+            updates.push(sql`years_experience = ${years_experience}`);
         }
         if (verification_status !== undefined) {
-            updates.push(`verification_status = $${paramIndex++}`);
-            values.push(verification_status);
+            updates.push(sql`verification_status = ${verification_status}`);
         }
         if (verification_documents !== undefined) {
-            updates.push(`verification_documents = $${paramIndex++}`);
-            values.push(JSON.stringify(verification_documents));
+            updates.push(sql`verification_documents = ${JSON.stringify(verification_documents)}`);
         }
         if (verified_by !== undefined) {
-            updates.push(`verified_by = $${paramIndex++}, verified_at = CURRENT_TIMESTAMP`);
-            values.push(verified_by);
+            updates.push(sql`verified_by = ${verified_by}, verified_at = CURRENT_TIMESTAMP`);
         }
         if (payout_method !== undefined) {
-            updates.push(`payout_method = $${paramIndex++}`);
-            values.push(payout_method);
+            updates.push(sql`payout_method = ${payout_method}`);
         }
         if (payout_details !== undefined) {
-            updates.push(`payout_details = $${paramIndex++}`);
-            values.push(JSON.stringify(payout_details));
+            updates.push(sql`payout_details = ${JSON.stringify(payout_details)}`);
         }
 
         if (updates.length === 0) {
@@ -214,7 +200,7 @@ const updateEducator = async (req, res) => {
 
         const result = await sql`
             UPDATE educator 
-            SET ${sql.unsafe(updates.join(', '))}
+            SET ${sql(updates, ', ')}
             WHERE user_id = ${id}
             RETURNING *
         `;

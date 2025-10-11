@@ -144,32 +144,24 @@ const updateCourseCategory = async (req, res) => {
         } = req.body;
 
         const updates = [];
-        const values = [id];
-        let paramIndex = 2;
 
         if (name !== undefined) {
-            updates.push(`name = $${paramIndex++}`);
-            values.push(name);
+            updates.push(sql`name = ${name}`);
         }
         if (slug !== undefined) {
-            updates.push(`slug = $${paramIndex++}`);
-            values.push(slug);
+            updates.push(sql`slug = ${slug}`);
         }
         if (description !== undefined) {
-            updates.push(`description = $${paramIndex++}`);
-            values.push(description);
+            updates.push(sql`description = ${description}`);
         }
         if (icon_url !== undefined) {
-            updates.push(`icon_url = $${paramIndex++}`);
-            values.push(icon_url);
+            updates.push(sql`icon_url = ${icon_url}`);
         }
         if (color !== undefined) {
-            updates.push(`color = $${paramIndex++}`);
-            values.push(color);
+            updates.push(sql`color = ${color}`);
         }
         if (is_active !== undefined) {
-            updates.push(`is_active = $${paramIndex++}`);
-            values.push(is_active);
+            updates.push(sql`is_active = ${is_active}`);
         }
 
         if (updates.length === 0) {
@@ -181,7 +173,7 @@ const updateCourseCategory = async (req, res) => {
 
         const result = await sql`
             UPDATE course_category 
-            SET ${sql.unsafe(updates.join(', '))}
+            SET ${sql(updates, ', ')}
             WHERE category_id = ${id}
             RETURNING *
         `;

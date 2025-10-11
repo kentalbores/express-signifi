@@ -354,32 +354,24 @@ async function updateLearner(req, res) {
     } = req.body;
 
     const updates = [];
-    const values = [id];
-    let paramIndex = 2;
 
     if (student_id !== undefined) {
-      updates.push(`student_id = $${paramIndex++}`);
-      values.push(student_id);
+      updates.push(sql`student_id = ${student_id}`);
     }
     if (status !== undefined) {
-      updates.push(`status = $${paramIndex++}`);
-      values.push(status);
+      updates.push(sql`status = ${status}`);
     }
     if (learning_streak !== undefined) {
-      updates.push(`learning_streak = $${paramIndex++}`);
-      values.push(learning_streak);
+      updates.push(sql`learning_streak = ${learning_streak}`);
     }
     if (total_points !== undefined) {
-      updates.push(`total_points = $${paramIndex++}`);
-      values.push(total_points);
+      updates.push(sql`total_points = ${total_points}`);
     }
     if (level !== undefined) {
-      updates.push(`level = $${paramIndex++}`);
-      values.push(level);
+      updates.push(sql`level = ${level}`);
     }
     if (preferred_learning_style !== undefined) {
-      updates.push(`preferred_learning_style = $${paramIndex++}`);
-      values.push(preferred_learning_style);
+      updates.push(sql`preferred_learning_style = ${preferred_learning_style}`);
     }
 
     if (updates.length === 0) {
@@ -391,7 +383,7 @@ async function updateLearner(req, res) {
 
     const result = await sql`
       UPDATE learner 
-      SET ${sql.unsafe(updates.join(', '))}
+      SET ${sql(updates, ', ')}
       WHERE user_id = ${id}
       RETURNING *
     `;

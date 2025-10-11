@@ -14,11 +14,11 @@ const createMinigame = async (req, res) => {
             points_reward = 0,
             is_active = true
         } = req.body;
-        if (!name) return res.status(400).json({ error: 'Missing required field: name' });
+        if (!name) return res.status(400).json({ success: false, error: 'Missing required field: name' });
         if (difficulty_level) {
             const valid = ['easy', 'medium', 'hard', 'expert'];
             if (!valid.includes(difficulty_level)) {
-                return res.status(400).json({ error: 'Invalid difficulty_level. Must be easy, medium, hard, or expert' });
+                return res.status(400).json({ success: false, error: 'Invalid difficulty_level. Must be easy, medium, hard, or expert' });
             }
         }
         const result = await sql`
@@ -31,10 +31,10 @@ const createMinigame = async (req, res) => {
             )
             RETURNING game_id, name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active, created_at
         `;
-        res.status(201).json({ message: 'Minigame created successfully', game: result[0] });
+        res.status(201).json({ success: true, message: 'Minigame created successfully', data: result[0] });
     } catch (error) {
         console.error('Error creating minigame:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 
@@ -42,10 +42,10 @@ const createMinigame = async (req, res) => {
 const getAllMinigames = async (_req, res) => {
     try {
         const games = await sql`SELECT game_id, name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active, created_at FROM minigame ORDER BY game_id DESC`;
-        res.status(200).json({ message: 'Minigames retrieved successfully', games });
+        res.status(200).json({ success: true, message: 'Minigames retrieved successfully', data: games });
     } catch (error) {
         console.error('Error fetching minigames:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 
@@ -53,13 +53,13 @@ const getAllMinigames = async (_req, res) => {
 const getMinigameById = async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid game ID' });
+        if (!id || isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid game ID' });
         const result = await sql`SELECT game_id, name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active, created_at FROM minigame WHERE game_id = ${id}`;
-        if (result.length === 0) return res.status(404).json({ error: 'Minigame not found' });
-        res.status(200).json({ message: 'Minigame retrieved successfully', game: result[0] });
+        if (result.length === 0) return res.status(404).json({ success: false, error: 'Minigame not found' });
+        res.status(200).json({ success: true, message: 'Minigame retrieved successfully', data: result[0] });
     } catch (error) {
         console.error('Error fetching minigame:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 
@@ -68,16 +68,16 @@ const updateMinigame = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active } = req.body;
-        if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid game ID' });
+        if (!id || isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid game ID' });
         const current = await sql`SELECT name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active FROM minigame WHERE game_id = ${id}`;
-        if (current.length === 0) return res.status(404).json({ error: 'Minigame not found' });
+        if (current.length === 0) return res.status(404).json({ success: false, error: 'Minigame not found' });
         const updatedName = name !== undefined ? name : current[0].name;
         const updatedDescription = description !== undefined ? description : current[0].description;
         const updatedCategory = category !== undefined ? category : current[0].category;
         const updatedDifficulty = difficulty_level !== undefined ? difficulty_level : current[0].difficulty_level;
         if (updatedDifficulty) {
             const valid = ['easy', 'medium', 'hard', 'expert'];
-            if (!valid.includes(updatedDifficulty)) return res.status(400).json({ error: 'Invalid difficulty_level. Must be easy, medium, hard, or expert' });
+            if (!valid.includes(updatedDifficulty)) return res.status(400).json({ success: false, error: 'Invalid difficulty_level. Must be easy, medium, hard, or expert' });
         }
         const updatedInstructions = instructions !== undefined ? instructions : current[0].instructions;
         const updatedThumb = thumbnail_url !== undefined ? thumbnail_url : current[0].thumbnail_url;
@@ -89,10 +89,10 @@ const updateMinigame = async (req, res) => {
             WHERE game_id = ${id}
             RETURNING game_id, name, description, category, difficulty_level, instructions, thumbnail_url, game_config, points_reward, is_active, created_at
         `;
-        res.status(200).json({ message: 'Minigame updated successfully', game: result[0] });
+        res.status(200).json({ success: true, message: 'Minigame updated successfully', data: result[0] });
     } catch (error) {
         console.error('Error updating minigame:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 
@@ -100,13 +100,13 @@ const updateMinigame = async (req, res) => {
 const deleteMinigame = async (req, res) => {
     try {
         const { id } = req.params;
-        if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid game ID' });
+        if (!id || isNaN(id)) return res.status(400).json({ success: false, error: 'Invalid game ID' });
         const result = await sql`DELETE FROM minigame WHERE game_id = ${id} RETURNING game_id`;
-        if (result.length === 0) return res.status(404).json({ error: 'Minigame not found' });
-        res.status(200).json({ message: 'Minigame deleted successfully' });
+        if (result.length === 0) return res.status(404).json({ success: false, error: 'Minigame not found' });
+        res.status(200).json({ success: true, message: 'Minigame deleted successfully' });
     } catch (error) {
         console.error('Error deleting minigame:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 };
 

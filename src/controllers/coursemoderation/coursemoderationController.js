@@ -103,25 +103,31 @@ const getAllCourseModerations = async (req, res) => {
     try {
         const { course_id, admin_id, status, limit = 50, offset = 0 } = req.query;
         
-        let whereConditions = [];
-        let queryParams = [];
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
         
         if (course_id) {
-            whereConditions.push(`cm.course_id = $${queryParams.length + 1}`);
-            queryParams.push(course_id);
+            conditions.push(sql`cm.course_id = ${course_id}`);
         }
-        
         if (admin_id) {
-            whereConditions.push(`cm.admin_id = $${queryParams.length + 1}`);
-            queryParams.push(admin_id);
+            conditions.push(sql`cm.admin_id = ${admin_id}`);
         }
-        
         if (status) {
-            whereConditions.push(`cm.status = $${queryParams.length + 1}`);
-            queryParams.push(status);
+            conditions.push(sql`cm.status = ${status}`);
         }
 
-        let query = `
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+        
+        const moderations = await sql`
             SELECT 
                 cm.moderation_id, cm.course_id, cm.admin_id, cm.status, 
                 cm.comments, cm.changes_required, cm.reviewed_at,
@@ -132,26 +138,17 @@ const getAllCourseModerations = async (req, res) => {
             LEFT JOIN course c ON cm.course_id = c.course_id
             LEFT JOIN useraccount u ON cm.admin_id = u.user_id
             LEFT JOIN useraccount e ON c.educator_id = e.user_id
+            ${whereClause}
+            ORDER BY cm.reviewed_at DESC NULLS LAST
+            LIMIT ${parseInt(limit)} OFFSET ${parseInt(offset)}
         `;
         
-        if (whereConditions.length > 0) {
-            query += ' WHERE ' + whereConditions.join(' AND ');
-        }
-        
-        query += ` ORDER BY cm.reviewed_at DESC NULLS LAST
-                   LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}`;
-        
-        queryParams.push(parseInt(limit), parseInt(offset));
-        
-        const moderations = await sql.unsafe(query, queryParams);
-
-        // Get total count for pagination
-        const countQuery = `
+        const countResult = await sql`
             SELECT COUNT(*) as total
             FROM coursemoderation cm
-            ${whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : ''}
+            ${whereClause}
         `;
-        const countResult = await sql.unsafe(countQuery, queryParams.slice(0, -2));
+        
         const total = parseInt(countResult[0].total);
 
         res.status(200).json({ 

@@ -367,39 +367,41 @@ const learnerAuth = [authenticateToken, requireLearner];
 
 //remove learnerAuth for now
 
-// CRUD routes for learner management
+// IMPORTANT: Specific routes MUST come before parameterized routes to avoid matching issues
+
+// Profile (must be before /:id routes)
+router.get('/profile', getLearnerProfile);
+router.patch('/profile', updateLearnerProfile);
+router.get('/progress', getLearnerProgress);
+
+// Enrollments (must be before /:id routes)
+router.get('/enrollments', listEnrollments);
+router.post('/enrollments',  enrollCourse);
+router.get('/enrollments/:courseId/progress',  getEnrollmentProgress);
+
+// Activity (must be before /:id routes)
+router.get('/activity',  listActivity);
+router.post('/activity',  upsertActivity);
+
+// Attempts (must be before /:id routes)
+router.get('/attempts',  listAttempts);
+router.post('/attempts',  submitAttempt);
+
+// Notifications (must be before /:id routes)
+router.get('/notifications',  listNotifications);
+router.post('/notifications/read-all',  markAllNotifications);
+router.post('/notifications/:notificationId/read',  markNotification);
+
+// Minigames (must be before /:id routes)
+router.get('/minigames/attempts',  listMinigameAttempts);
+router.post('/minigames/attempts',  submitMinigameAttempt);
+
+// CRUD routes for learner management (parameterized routes come LAST)
 router.post('/', createLearner);                          // POST /api/learner - Create learner
 router.get('/', getAllLearners);                          // GET /api/learner - Get all learners
 router.get('/:id', getLearnerById);                       // GET /api/learner/:id - Get learner by ID
 router.put('/:id', updateLearner);                        // PUT /api/learner/:id - Update learner
 router.delete('/:id', deleteLearner);                     // DELETE /api/learner/:id - Delete learner
-
-// Profile
-router.get('/profile', getLearnerProfile);
-router.patch('/profile', updateLearnerProfile);
-router.get('/progress', getLearnerProgress);
-
-// Enrollments
-router.get('/enrollments', listEnrollments);
-router.post('/enrollments',  enrollCourse);
-router.get('/enrollments/:courseId/progress',  getEnrollmentProgress);
-
-// Activity
-router.get('/activity',  listActivity);
-router.post('/activity',  upsertActivity);
-
-// Attempts
-router.get('/attempts',  listAttempts);
-router.post('/attempts',  submitAttempt);
-
-// Notifications
-router.get('/notifications',  listNotifications);
-router.post('/notifications/read-all',  markAllNotifications);
-router.post('/notifications/:notificationId/read',  markNotification);
-
-// Minigames
-router.get('/minigames/attempts',  listMinigameAttempts);
-router.post('/minigames/attempts',  submitMinigameAttempt);
 
 module.exports = router;
 

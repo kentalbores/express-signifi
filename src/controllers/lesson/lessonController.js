@@ -89,40 +89,41 @@ const getAllLessons = async (req, res) => {
     try {
         const { module_id, is_active, lesson_type } = req.query;
         
-        let whereConditions = [];
-        let queryParams = [];
+        // Build WHERE conditions dynamically
+        let whereClause = sql``;
+        const conditions = [];
         
         if (module_id) {
-            whereConditions.push(`module_id = $${queryParams.length + 1}`);
-            queryParams.push(module_id);
+            conditions.push(sql`module_id = ${module_id}`);
         }
-        
         if (is_active !== undefined) {
-            whereConditions.push(`is_active = $${queryParams.length + 1}`);
-            queryParams.push(is_active === 'true');
+            conditions.push(sql`is_active = ${is_active === 'true'}`);
         }
-        
         if (lesson_type) {
-            whereConditions.push(`lesson_type = $${queryParams.length + 1}`);
-            queryParams.push(lesson_type);
+            conditions.push(sql`lesson_type = ${lesson_type}`);
         }
 
-        let query = `
+        // Combine conditions with AND
+        if (conditions.length > 0) {
+            whereClause = conditions.reduce((acc, condition, index) => {
+                if (index === 0) {
+                    return sql`WHERE ${condition}`;
+                }
+                return sql`${acc} AND ${condition}`;
+            }, sql``);
+        }
+
+        const lessons = await sql`
             SELECT lesson_id, module_id, title, description, content, video_url, 
                    video_duration_seconds, lesson_type, order_index, estimated_duration_minutes,
                    is_active, is_preview, requires_completion, passing_score, max_attempts,
                    material_type, original_filename, stored_filename, file_path, file_size,
                    mime_type, is_downloadable, streaming_url, video_metadata, created_at, updated_at
             FROM lesson
+            ${whereClause}
+            ORDER BY order_index ASC, lesson_id DESC
         `;
         
-        if (whereConditions.length > 0) {
-            query += ' WHERE ' + whereConditions.join(' AND ');
-        }
-        
-        query += ' ORDER BY order_index ASC, lesson_id DESC';
-        
-        const lessons = await sql.unsafe(query, queryParams);
         res.status(200).json({ message: 'Lessons retrieved successfully', lessons });
     } catch (error) {
         console.error('Error fetching lessons:', error);

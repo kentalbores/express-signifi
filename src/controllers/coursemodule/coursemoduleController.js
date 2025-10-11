@@ -33,14 +33,23 @@ const createCourseModule = async (req, res) => {
 const getAllCourseModules = async (req, res) => {
     try {
         const { course_id } = req.query;
-        let query = 'SELECT module_id, course_id, title, description FROM coursemodule';
-        const values = [];
+        
+        let modules;
         if (course_id) {
-            query += ' WHERE course_id = $1';
-            values.push(course_id);
+            modules = await sql`
+                SELECT module_id, course_id, title, description 
+                FROM coursemodule
+                WHERE course_id = ${course_id}
+                ORDER BY module_id DESC
+            `;
+        } else {
+            modules = await sql`
+                SELECT module_id, course_id, title, description 
+                FROM coursemodule
+                ORDER BY module_id DESC
+            `;
         }
-        query += ' ORDER BY module_id DESC';
-        const modules = await sql.unsafe(query, values);
+        
         res.status(200).json({ message: 'Modules retrieved successfully', modules });
     } catch (error) {
         console.error('Error fetching modules:', error);
