@@ -227,6 +227,11 @@ const updateUser = async (req, res) => {
         if (gender !== undefined) {
             updates.push(sql`gender = ${gender}`);
         }
+        // NOTE: For file uploads (profile_picture_url, cover_photo_url), 
+        // use the dedicated file upload endpoints:
+        // POST /api/files/upload/profile-photo
+        // POST /api/files/upload/cover-photo
+        // These fields can still be updated directly with URLs if needed
         if (profile_picture_url !== undefined) {
             updates.push(sql`profile_picture_url = ${profile_picture_url}`);
         }
