@@ -36,6 +36,7 @@ const contentPolicyRoutes = require('./routes/contentpolicy/contentPolicyRoutes'
 const analyticsRoutes = require('./routes/analytics/analyticsRoutes');
 const { paymentsRouter, stripeWebhookHandler } = require('./routes/payment/paymentRoutes');
 const fileStorageRoutes = require('./routes/filestorage/fileStorageRoutes');
+const healthRoutes = require('./routes/health/healthRoutes');
 
 // Stripe webhook must use raw body BEFORE express.json()
 app.post('/api/payments/webhook', bodyParser.raw({ type: 'application/json' }), stripeWebhookHandler);
@@ -69,6 +70,9 @@ app.get('/test', (req, res) => {
 app.get('/test2', (req, res) => {
     res.send('hello world');
 });
+
+// Health check routes (no auth required)
+app.use('/api/health', healthRoutes);
 
 // API routes
 app.use('/api/auth', authRoutes);
