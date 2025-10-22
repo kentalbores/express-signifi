@@ -56,7 +56,18 @@ async function listEnrollments(req, res) {
       ORDER BY e.enrolled_at DESC`;
     res.json(rows);
   } catch (e) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching learner enrollments:', {
+      message: e.message,
+      code: e.code,
+      detail: e.detail,
+      table: e.table_name,
+      column: e.column_name,
+      userId
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV === 'development' ? e.message : undefined
+    });
   }
 }
 
@@ -79,18 +90,63 @@ async function getEnrollmentProgress(req, res) {
   try {
     const userId = req.user.user_id;
     const { courseId } = req.params;
-    const rows = await sql`
-      SELECT a.user_id as learner_id, l.module_id, a.lesson_id, a.status, a.updated_at
-      FROM learning_activity a
-      JOIN lesson l ON l.lesson_id = a.lesson_id
-      WHERE a.user_id = ${userId} AND l.module_id IN (
-        SELECT module_id FROM coursemodule WHERE course_id = ${courseId}
-      )`;
+    
+    // First try to get data from learning_activity table
+    let rows = [];
+    try {
+      rows = await sql`
+        SELECT a.user_id as learner_id, l.module_id, a.lesson_id, a.status, a.updated_at
+        FROM learning_activity a
+        JOIN lesson l ON l.lesson_id = a.lesson_id
+        WHERE a.user_id = ${userId} AND l.module_id IN (
+          SELECT module_id FROM coursemodule WHERE course_id = ${courseId}
+        )`;
+    } catch (activityError) {
+      console.warn('Error fetching from learning_activity:', {
+        message: activityError.message,
+        code: activityError.code,
+        detail: activityError.detail,
+        hint: 'Trying alternative query'
+      });
+      
+      // Fallback: Try to get basic lesson count
+      try {
+        const lessonCount = await sql`
+          SELECT COUNT(*) as total
+          FROM lesson l
+          JOIN coursemodule cm ON l.module_id = cm.module_id
+          WHERE cm.course_id = ${courseId}`;
+        
+        return res.json({ 
+          progress_perc: 0, 
+          status: 'not_started',
+          total_lessons: parseInt(lessonCount[0]?.total || 0),
+          message: 'No activity data available'
+        });
+      } catch (fallbackError) {
+        console.error('Fallback query also failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
+    
     // naive aggregation demo:
     const progress_perc = rows.length ? Math.min(100, Math.round((rows.filter(r=>r.status==='completed').length / rows.length) * 100)) : 0;
     res.json({ progress_perc, status: progress_perc === 100 ? 'completed' : 'ongoing' });
   } catch (e) {
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching enrollment progress:', {
+      message: e.message,
+      code: e.code,
+      detail: e.detail,
+      position: e.position,
+      table: e.table_name,
+      column: e.column_name,
+      userId: req.user?.user_id,
+      courseId: req.params?.courseId
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      detail: process.env.NODE_ENV === 'development' ? e.message : undefined
+    });
   }
 }
 
