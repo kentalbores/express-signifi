@@ -62,7 +62,7 @@ async function listEnrollments(req, res) {
       detail: e.detail,
       table: e.table_name,
       column: e.column_name,
-      userId
+      userId: req.user?.user_id
     });
     res.status(500).json({ 
       error: 'Internal server error',
