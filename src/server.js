@@ -1,7 +1,4 @@
 const express = require('express');
-// const swaggerUi = require('swagger-ui-express'); // <--- REMOVED
-// const YAML = require('yamljs'); // <--- REMOVED
-// const swaggerDoc = YAML.load('./src/swagger.yaml'); // <--- REMOVED
 const app = express();
 const cors = require('cors');
 const PORT = process.env.PORT || 5000;
@@ -51,9 +48,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: false
 }));
-
-// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc)); // <--- REMOVED
-
 
 // Swagger API documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, { // <--- KEPT THIS ONE
