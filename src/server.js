@@ -37,7 +37,7 @@ const analyticsRoutes = require('./routes/analytics/analyticsRoutes');
 const { paymentsRouter, stripeWebhookHandler } = require('./routes/payment/paymentRoutes');
 const fileStorageRoutes = require('./routes/filestorage/fileStorageRoutes');
 const healthRoutes = require('./routes/health/healthRoutes');
-
+const subscriptionRoutes = require('./routes/subscription/subscriptionRoutes');
 // Stripe webhook must use raw body BEFORE express.json()
 app.post('/api/payments/webhook', bodyParser.raw({ type: 'application/json' }), stripeWebhookHandler);
 
@@ -102,7 +102,7 @@ app.use('/api/content-policies', contentPolicyRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/files', fileStorageRoutes);
-
+app.use('/api/subscriptions', subscriptionRoutes);
 // Start server
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
