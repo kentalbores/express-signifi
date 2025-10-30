@@ -97,7 +97,7 @@ app.use('/api/course-categories', courseCategoryRoutes);
 app.use('/api/educators', educatorRoutes);
 app.use('/api/super-admins', superAdminRoutes);
 app.use('/api/institution-admins', institutionAdminRoutes);
-con.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
+app.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
 app.use('/api/content-policies', contentPolicyRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payments', paymentsRouter);
