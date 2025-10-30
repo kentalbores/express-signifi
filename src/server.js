@@ -1,9 +1,12 @@
 const express = require('express');
+// const swaggerUi = require('swagger-ui-express'); // <--- REMOVED
+// const YAML = require('yamljs'); // <--- REMOVED
+// const swaggerDoc = YAML.load('./src/swagger.yaml'); // <--- REMOVED
 const app = express();
 const cors = require('cors');
 const PORT = process.env.PORT || 5000;
 const bodyParser = require('body-parser');
-const { swaggerUi, specs } = require('./config/swagger');
+const { swaggerUi, specs } = require('./config/swagger'); // <--- KEPT THIS ONE
 
 // Import routes
 const userRoutes = require('./routes/user/userRoutes');
@@ -49,9 +52,11 @@ app.use(cors({
   credentials: false
 }));
 
+// app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDoc)); // <--- REMOVED
+
 
 // Swagger API documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, {
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, { // <--- KEPT THIS ONE
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'SigniFi API Documentation'
@@ -92,7 +97,7 @@ app.use('/api/course-categories', courseCategoryRoutes);
 app.use('/api/educators', educatorRoutes);
 app.use('/api/super-admins', superAdminRoutes);
 app.use('/api/institution-admins', institutionAdminRoutes);
-app.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
+con.use('/api/selfstudy-performances', selfStudyPerformanceRoutes);
 app.use('/api/content-policies', contentPolicyRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/payments', paymentsRouter);
