@@ -1,0 +1,1361 @@
+openapi: 3.0.0
+info:
+  title: Express Signifi API
+  description: API documentation for the Express Signifi application
+  version: 1.0.0
+  contact:
+    email: support@signifi.com
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://api.signifi.com
+    description: Production server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the user
+        email:
+          type: string
+          format: email
+          description: User's email address
+        first_name:
+          type: string
+          description: User's first name
+        last_name:
+          type: string
+          description: User's last name
+        role:
+          type: string
+          enum: [learner, educator, admin]
+          description: User's role in the system
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the user was created
+      required:
+        - email
+        - first_name
+        - last_name
+        - role
+
+    Course:
+      type: object
+      properties:
+        course_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the course
+        title:
+          type: string
+          description: Course title
+        description:
+          type: string
+          description: Course description
+        price:
+          type: number
+          format: float
+          description: Course price
+        is_published:
+          type: boolean
+          description: Whether the course is published
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the course was created
+      required:
+        - title
+        - description
+        - price
+
+    Lesson:
+      type: object
+      properties:
+        lesson_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the lesson
+        module_id:
+          type: string
+          format: uuid
+          description: ID of the module this lesson belongs to
+        title:
+          type: string
+          description: Lesson title
+        description:
+          type: string
+          description: Lesson description
+        order:
+          type: integer
+          description: Order of the lesson within the module
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the lesson was created
+      required:
+        - module_id
+        - title
+        - order
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+      required:
+        - email
+        - password
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+        first_name:
+          type: string
+          description: User's first name
+        last_name:
+          type: string
+          description: User's last name
+      required:
+        - email
+        - password
+        - first_name
+        - last_name
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token for authentication
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - token
+        - user
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate a user and return a JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: User registration
+      description: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/register-educator:
+    post:
+      tags:
+        - Authentication
+      summary: Educator registration
+      description: Register a new educator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RegisterRequest'
+                - type: object
+                  properties:
+                    institution_id:
+                      type: string
+                      format: uuid
+                      description: ID of the institution the educator belongs to
+      responses:
+        '201':
+          description: Educator successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input or user already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get current user
+      description: Get the currently authenticated user's information
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users:
+    post:
+      tags:
+        - Users
+      summary: Create user
+      description: Create a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Users
+      summary: Get all users
+      description: Retrieve a list of all users
+      responses:
+        '200':
+          description: A list of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Retrieve a specific user by their ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Update a specific user by their ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      description: Delete a specific user by their ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the user to delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: User deleted successfully
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/courses:
+    post:
+      tags:
+        - Courses
+      summary: Create course
+      description: Create a new course
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Course'
+      responses:
+        '201':
+          description: Course created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Courses
+      summary: Get all courses
+      description: Retrieve a list of all courses
+      responses:
+        '200':
+          description: A list of courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Course'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/courses/published:
+    get:
+      tags:
+        - Courses
+      summary: Get published courses
+      description: Retrieve a list of all published courses
+      responses:
+        '200':
+          description: A list of published courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Course'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/courses/search:
+    get:
+      tags:
+        - Courses
+      summary: Search courses
+      description: Search for courses by title or description
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A list of matching courses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Course'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/courses/{id}:
+    get:
+      tags:
+        - Courses
+      summary: Get course by ID
+      description: Retrieve a specific course by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the course to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Course found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Courses
+      summary: Update course
+      description: Update a specific course by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the course to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Course'
+      responses:
+        '200':
+          description: Course updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Course'
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Courses
+      summary: Delete course
+      description: Delete a specific course by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the course to delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Course deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Course deleted successfully
+        '404':
+          description: Course not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lessons:
+    post:
+      tags:
+        - Lessons
+      summary: Create lesson
+      description: Create a new lesson
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lesson'
+      responses:
+        '201':
+          description: Lesson created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags:
+        - Lessons
+      summary: Get all lessons
+      description: Retrieve a list of all lessons
+      responses:
+        '200':
+          description: A list of lessons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Lesson'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/lessons/{id}:
+    get:
+      tags:
+        - Lessons
+      summary: Get lesson by ID
+      description: Retrieve a specific lesson by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the lesson to retrieve
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lesson found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '404':
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Lessons
+      summary: Update lesson
+      description: Update a specific lesson by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the lesson to update
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lesson'
+      responses:
+        '200':
+          description: Lesson updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lesson'
+        '404':
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Lessons
+      summary: Delete lesson
+      description: Delete a specific lesson by its ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the lesson to delete
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lesson deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Lesson deleted successfully
+        '404':
+          description: Lesson not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/institutions:
+    get:
+      tags:
+        - Institutions
+      summary: Get all institutions
+      description: Retrieve a list of all institutions
+      responses:
+        '200':
+          description: A list of institutions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    institution_id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    location:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/modules:
+    get:
+      tags:
+        - Course Modules
+      summary: Get all course modules
+      description: Retrieve a list of all course modules
+      responses:
+        '200':
+          description: A list of course modules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    module_id:
+                      type: string
+                      format: uuid
+                    course_id:
+                      type: string
+                      format: uuid
+                    title:
+                      type: string
+                    description:
+                      type: string
+                    order:
+                      type: integer
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/enrollments:
+    get:
+      tags:
+        - Enrollments
+      summary: Get all enrollments
+      description: Retrieve a list of all enrollments
+      responses:
+        '200':
+          description: A list of enrollments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    enrollment_id:
+                      type: string
+                      format: uuid
+                    learner_id:
+                      type: string
+                      format: uuid
+                    course_id:
+                      type: string
+                      format: uuid
+                    status:
+                      type: string
+                      enum: [active, completed, dropped]
+                    enrollment_date:
+                      type: string
+                      format: date-time
+                    completion_date:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/attempts:
+    get:
+      tags:
+        - Attempts
+      summary: Get all attempts
+      description: Retrieve a list of all lesson attempts
+      responses:
+        '200':
+          description: A list of attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attempt_id:
+                      type: string
+                      format: uuid
+                    learner_id:
+                      type: string
+                      format: uuid
+                    lesson_id:
+                      type: string
+                      format: uuid
+                    score:
+                      type: number
+                    status:
+                      type: string
+                      enum: [completed, in_progress]
+                    started_at:
+                      type: string
+                      format: date-time
+                    completed_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/feedback:
+    get:
+      tags:
+        - Feedback
+      summary: Get all feedback
+      description: Retrieve a list of all feedback
+      responses:
+        '200':
+          description: A list of feedback
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    feedback_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    course_id:
+                      type: string
+                      format: uuid
+                    rating:
+                      type: integer
+                      minimum: 1
+                      maximum: 5
+                    comment:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/achievements:
+    get:
+      tags:
+        - Achievements
+      summary: Get all achievements
+      description: Retrieve a list of all achievements
+      responses:
+        '200':
+          description: A list of achievements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    achievement_id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    criteria:
+                      type: string
+                    points:
+                      type: integer
+                    icon_url:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/activities:
+    get:
+      tags:
+        - Activities
+      summary: Get all activities
+      description: Retrieve a list of all user activities
+      responses:
+        '200':
+          description: A list of activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    activity_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    activity_type:
+                      type: string
+                    description:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get all notifications
+      description: Retrieve a list of all notifications
+      responses:
+        '200':
+          description: A list of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    notification_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    title:
+                      type: string
+                    message:
+                      type: string
+                    is_read:
+                      type: boolean
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/minigames:
+    get:
+      tags:
+        - Minigames
+      summary: Get all minigames
+      description: Retrieve a list of all minigames
+      responses:
+        '200':
+          description: A list of minigames
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    minigame_id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    type:
+                      type: string
+                    difficulty:
+                      type: string
+                      enum: [easy, medium, hard]
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/game-attempts:
+    get:
+      tags:
+        - Game Attempts
+      summary: Get all game attempts
+      description: Retrieve a list of all minigame attempts
+      responses:
+        '200':
+          description: A list of game attempts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attempt_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    minigame_id:
+                      type: string
+                      format: uuid
+                    score:
+                      type: number
+                    duration:
+                      type: integer
+                      description: Duration in seconds
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/transactions:
+    get:
+      tags:
+        - Transactions
+      summary: Get all transactions
+      description: Retrieve a list of all transactions
+      responses:
+        '200':
+          description: A list of transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    transaction_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    amount:
+                      type: number
+                    type:
+                      type: string
+                      enum: [purchase, refund, payout]
+                    status:
+                      type: string
+                      enum: [pending, completed, failed]
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/admin-activities:
+    get:
+      tags:
+        - Admin Activities
+      summary: Get all admin activities
+      description: Retrieve a list of all admin activities
+      responses:
+        '200':
+          description: A list of admin activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    activity_id:
+                      type: string
+                      format: uuid
+                    admin_id:
+                      type: string
+                      format: uuid
+                    action:
+                      type: string
+                    description:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/learner:
+    get:
+      tags:
+        - Learners
+      summary: Get all learners
+      description: Retrieve a list of all learners
+      responses:
+        '200':
+          description: A list of learners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    learner_id:
+                      type: string
+                      format: uuid
+                    user_id:
+                      type: string
+                      format: uuid
+                    preferences:
+                      type: object
+                    progress:
+                      type: object
+                    created_at:
+                      type: string
+                      format: date-time
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /test:
+    get:
+      tags:
+        - Test
+      summary: Test endpoint
+      description: Simple test endpoint that returns "hello world"
+      responses:
+        '200':
+          description: Test response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: hello world
+
+  /test2:
+    get:
+      tags:
+        - Test
+      summary: Another test endpoint
+      description: Simple test endpoint that returns "hello world"
+      responses:
+        '200':
+          description: Test response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: hello world
