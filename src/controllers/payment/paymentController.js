@@ -13,10 +13,15 @@ const stripe = new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: '2024-06-20',
 });
 
-// POST /api/payments/intent
+// ============================================
+// Revenue Stream 2: Course Marketplace Payment
+// ============================================
+
+// POST /api/payments/create-course-payment
 // body: { course_id: number }
 // auth: Bearer token (learner)
-module.exports.createPaymentIntent = async (req, res) => {
+// Uses Stripe Connect Destination Charges for 20% platform fee
+module.exports.createCoursePayment = async (req, res) => {
   try {
     const learnerId = req.user && req.user.user_id;
     const { course_id } = req.body;
@@ -101,16 +106,47 @@ module.exports.createPaymentIntent = async (req, res) => {
       });
     }
 
-    // 4) Create Stripe PaymentIntent using total_amount
+    // 4) Get educator and their Stripe account
+    const educators = await sql`
+      SELECT user_id, payout_details
+      FROM educator
+      WHERE user_id = ${course.educator_id}
+      LIMIT 1
+    `;
+
+    if (educators.length === 0) {
+      return res.status(400).json({ error: 'Educator not found' });
+    }
+
+    const educator = educators[0];
+    const payoutDetails = educator.payout_details || {};
+    const educatorStripeId = payoutDetails.stripeAccountId;
+
+    if (!educatorStripeId) {
+      return res.status(400).json({ 
+        error: 'Educator payment account not configured. Please contact support.' 
+      });
+    }
+
+    // 5) Calculate platform fee (20%)
+    const applicationFeeAmount = Math.round(amount * 0.20);
+
+    // 6) Create Stripe PaymentIntent with Connect
     try {
       const paymentIntent = await stripe.paymentIntents.create({
         amount,
         currency: STRIPE_CURRENCY,
+        application_fee_amount: applicationFeeAmount,
+        transfer_data: {
+          destination: educatorStripeId,
+        },
         metadata: {
           order_id: String(orderId),
           learner_id: String(learnerId),
           course_id: String(course.course_id),
+          educator_id: String(course.educator_id),
           price_at_creation: String(priceNumber),
+          payment_type: 'course_purchase'
         },
         description: `Purchase course #${course.course_id} - ${course.title || ''}`.trim(),
         automatic_payment_methods: { enabled: true },
@@ -151,9 +187,15 @@ module.exports.stripeWebhook = async (req, res) => {
   }
 
   try {
-    if (event.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data.object;
-      const metadata = paymentIntent.metadata || {};
+    const eventType = event.type;
+    const eventData = event.data.object;
+    const metadata = eventData.metadata || {};
+
+    // ============================================
+    // Course Purchase Payment Success
+    // ============================================
+    if (eventType === 'payment_intent.succeeded' && metadata.payment_type === 'course_purchase') {
+      const paymentIntent = eventData;
       const learnerId = Number(metadata.learner_id);
       const courseId = Number(metadata.course_id);
       const orderId = Number(metadata.order_id);
@@ -199,7 +241,192 @@ module.exports.stripeWebhook = async (req, res) => {
       }
     }
 
-    if (event.type === 'payment_intent.payment_failed') {
+    // ============================================
+    // Subscription Checkout Completed
+    // ============================================
+    if (eventType === 'checkout.session.completed') {
+      const session = event.data.object;
+      const sessionMetadata = session.metadata || {};
+
+      // Handle Learner Subscription
+      if (sessionMetadata.learner_id) {
+        const learnerId = Number(sessionMetadata.learner_id);
+        const planId = sessionMetadata.plan_id || 'premium_monthly';
+        const stripeSubscriptionId = session.subscription;
+        const stripeCustomerId = session.customer;
+
+        try {
+          await sql`
+            INSERT INTO learner_subscription (
+              learner_id, plan_id, stripe_subscription_id, stripe_customer_id, status
+            ) VALUES (
+              ${learnerId}, ${planId}, ${stripeSubscriptionId}, ${stripeCustomerId}, 'active'
+            )
+            ON CONFLICT (learner_id) 
+            DO UPDATE SET
+              plan_id = ${planId},
+              stripe_subscription_id = ${stripeSubscriptionId},
+              stripe_customer_id = ${stripeCustomerId},
+              status = 'active',
+              updated_at = NOW()
+          `;
+          console.log(`Learner subscription activated for learner_id: ${learnerId}`);
+        } catch (err) {
+          console.error('Error updating learner subscription:', err);
+        }
+      }
+
+      // Handle Institution Subscription
+      if (sessionMetadata.institution_id) {
+        const institutionId = Number(sessionMetadata.institution_id);
+        const planId = sessionMetadata.plan_id || 'pro_monthly';
+        const stripeSubscriptionId = session.subscription;
+        const stripeCustomerId = session.customer;
+
+        // Set limits based on plan
+        let learnerLimit = 1000;
+        let educatorLimit = 50;
+        let adminLimit = 5;
+
+        if (planId.includes('enterprise')) {
+          learnerLimit = 10000;
+          educatorLimit = 500;
+          adminLimit = 20;
+        }
+
+        try {
+          await sql`
+            INSERT INTO institution_subscription (
+              institution_id, plan_id, stripe_subscription_id, stripe_customer_id, 
+              status, learner_limit, educator_limit, admin_limit
+            ) VALUES (
+              ${institutionId}, ${planId}, ${stripeSubscriptionId}, ${stripeCustomerId}, 
+              'active', ${learnerLimit}, ${educatorLimit}, ${adminLimit}
+            )
+            ON CONFLICT (institution_id) 
+            DO UPDATE SET
+              plan_id = ${planId},
+              stripe_subscription_id = ${stripeSubscriptionId},
+              stripe_customer_id = ${stripeCustomerId},
+              status = 'active',
+              learner_limit = ${learnerLimit},
+              educator_limit = ${educatorLimit},
+              admin_limit = ${adminLimit},
+              updated_at = NOW()
+          `;
+          console.log(`Institution subscription activated for institution_id: ${institutionId}`);
+        } catch (err) {
+          console.error('Error updating institution subscription:', err);
+        }
+      }
+    }
+
+    // ============================================
+    // Subscription Invoice Payment Succeeded
+    // ============================================
+    if (eventType === 'invoice.payment_succeeded') {
+      const invoice = event.data.object;
+      const stripeSubscriptionId = invoice.subscription;
+      const periodEnd = new Date(invoice.period_end * 1000);
+      const periodStart = new Date(invoice.period_start * 1000);
+
+      if (stripeSubscriptionId) {
+        // Update learner subscription
+        try {
+          await sql`
+            UPDATE learner_subscription
+            SET status = 'active',
+                current_period_end = ${periodEnd},
+                current_period_start = ${periodStart},
+                updated_at = NOW()
+            WHERE stripe_subscription_id = ${stripeSubscriptionId}
+          `;
+        } catch (err) {
+          console.error('Error updating learner subscription period:', err);
+        }
+
+        // Update institution subscription
+        try {
+          await sql`
+            UPDATE institution_subscription
+            SET status = 'active',
+                current_period_end = ${periodEnd},
+                current_period_start = ${periodStart},
+                updated_at = NOW()
+            WHERE stripe_subscription_id = ${stripeSubscriptionId}
+          `;
+        } catch (err) {
+          console.error('Error updating institution subscription period:', err);
+        }
+      }
+    }
+
+    // ============================================
+    // Subscription Invoice Payment Failed
+    // ============================================
+    if (eventType === 'invoice.payment_failed') {
+      const invoice = event.data.object;
+      const stripeSubscriptionId = invoice.subscription;
+
+      if (stripeSubscriptionId) {
+        // Update learner subscription
+        try {
+          await sql`
+            UPDATE learner_subscription
+            SET status = 'past_due', updated_at = NOW()
+            WHERE stripe_subscription_id = ${stripeSubscriptionId}
+          `;
+        } catch (err) {
+          console.error('Error marking learner subscription past_due:', err);
+        }
+
+        // Update institution subscription
+        try {
+          await sql`
+            UPDATE institution_subscription
+            SET status = 'past_due', updated_at = NOW()
+            WHERE stripe_subscription_id = ${stripeSubscriptionId}
+          `;
+        } catch (err) {
+          console.error('Error marking institution subscription past_due:', err);
+        }
+      }
+    }
+
+    // ============================================
+    // Subscription Deleted/Canceled
+    // ============================================
+    if (eventType === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const stripeSubscriptionId = subscription.id;
+
+      // Update learner subscription
+      try {
+        await sql`
+          UPDATE learner_subscription
+          SET status = 'canceled', updated_at = NOW()
+          WHERE stripe_subscription_id = ${stripeSubscriptionId}
+        `;
+      } catch (err) {
+        console.error('Error canceling learner subscription:', err);
+      }
+
+      // Update institution subscription
+      try {
+        await sql`
+          UPDATE institution_subscription
+          SET status = 'canceled', updated_at = NOW()
+          WHERE stripe_subscription_id = ${stripeSubscriptionId}
+        `;
+      } catch (err) {
+        console.error('Error canceling institution subscription:', err);
+      }
+    }
+
+    // ============================================
+    // Course Payment Failed
+    // ============================================
+    if (eventType === 'payment_intent.payment_failed') {
       const paymentIntent = event.data.object;
       const metadata = paymentIntent.metadata || {};
       const orderId = Number(metadata.order_id);
