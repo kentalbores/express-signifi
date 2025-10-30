@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireLearner } = require('../../middleware/auth');
-const { createPaymentIntent, stripeWebhook } = require('../../controllers/payment/paymentController');
+const { createCoursePayment, stripeWebhook } = require('../../controllers/payment/paymentController');
 
 /**
  * @swagger
@@ -92,7 +92,8 @@ const { createPaymentIntent, stripeWebhook } = require('../../controllers/paymen
 // Stripe requires raw body for webhook signature verification
 // We'll mount webhook separately in server.js with express.raw
 
-router.post('/intent', authenticateToken, requireLearner, createPaymentIntent);
+router.post('/intent', authenticateToken, requireLearner, createCoursePayment);
+router.post('/create-course-payment', authenticateToken, requireLearner, createCoursePayment);
 
 module.exports = {
   paymentsRouter: router,
