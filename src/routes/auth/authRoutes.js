@@ -194,7 +194,7 @@ const { authenticateToken } = require('../../middleware/auth');
 router.post('/login', login);
 router.post('/register', register);
 router.post('/register-educator', registerEducator);
-
+router.post('/oauth-login', loginOrRegisterWithProvider);
 // Protected routes
 router.get('/me', authenticateToken, me);
 

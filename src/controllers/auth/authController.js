@@ -2,7 +2,8 @@ const sql = require('../../config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getUserRoles } = require('../../middleware/auth');
-
+const fetch = require('node-fetch');
+const crypto = require('crypto');
 // Get JWT secret from env
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -188,12 +189,6 @@ const me = async (req, res) => {
   }
 };
 
-module.exports = {
-  login,
-  register,
-  me
-};
-
 // --- Educator Registration ---
 /**
  * POST /api/auth/register-educator
@@ -254,3 +249,119 @@ module.exports.registerEducator = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+/**
+ * POST /api/auth/oauth-login
+ * body: { provider_token: string }
+ * Verifies Supabase token, then logs in or registers a user locally.
+ */
+const loginOrRegisterWithProvider = async (req, res) => {
+  const { provider_token } = req.body;
+
+  if (!provider_token) {
+    return res.status(400).json({ error: 'provider_token is required' });
+  }
+
+  // 1. Verify the token with Supabase
+  let supabaseUser;
+  try {
+    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        Authorization: `Bearer ${provider_token}`,
+        apikey: `${process.env.SUPABASE_ANON_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Supabase token verification failed:', errorData);
+      return res.status(401).json({ error: 'Invalid provider token' });
+    }
+
+    supabaseUser = await response.json();
+    if (!supabaseUser || !supabaseUser.email) {
+      return res.status(401).json({ error: 'Failed to get user details from provider' });
+    }
+
+  } catch (error) {
+    console.error('Error verifying Supabase token:', error);
+    return res.status(500).json({ error: 'Internal server error during token verification' });
+  }
+
+  // 2. Find or create user in *your* local database
+  try {
+    const { email, user_metadata } = supabaseUser;
+
+    // Check if user already exists
+    const existingUsers = await sql`
+      SELECT user_id, email, first_name, last_name, created_at
+      FROM useraccount
+      WHERE email = ${email}
+    `;
+
+    let user = existingUsers[0];
+
+    // 3. If user does NOT exist, create them
+    if (!user) {
+      console.log(`User ${email} not found locally, creating new user...`);
+
+      // Get names from metadata
+      let firstName = user_metadata?.first_name || '';
+      let lastName = user_metadata?.last_name || '';
+
+      if (!firstName && user_metadata?.full_name) {
+        const parts = String(user_metadata.full_name).trim().split(/\s+/);
+        firstName = parts.shift() || '';
+        lastName = parts.length ? parts.join(' ') : '';
+      }
+
+      // Create a secure, random password for the user since they don't have one
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      // Create the user
+      const result = await sql`
+        INSERT INTO useraccount (email, password, first_name, last_name)
+        VALUES (${email}, ${hashedPassword}, ${firstName || null}, ${lastName || null})
+        RETURNING user_id, email, first_name, last_name, created_at
+      `;
+      user = result[0];
+
+      // Also create their learner profile (mirroring your 'register' function)
+      await sql`
+        INSERT INTO learner (user_id, status, learning_streak, total_points, level)
+        VALUES (${user.user_id}, 'active', 0, 0, 1)
+      `;
+    }
+
+    // 4. User exists (or was just created), generate YOUR app's JWT
+    const token = await generateToken(user);
+    const roles = await getUserRoles(user.user_id);
+
+    res.status(200).json({
+      message: user ? 'Login successful' : 'User registered and logged in successfully',
+      token,
+      user: {
+        user_id: user.user_id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        roles
+      }
+    });
+
+  } catch (error) {
+    console.error('Error during OAuth login/registration:', error);
+    // Handle duplicate email race condition (though find-first should prevent it)
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+module.exports.login = login;
+module.exports.register = register;
+module.exports.me = me;
+module.exports.registerEducator = module.exports.registerEducator;
+module.exports.loginOrRegisterWithProvider = loginOrRegisterWithProvider;
