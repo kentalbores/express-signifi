@@ -3,7 +3,8 @@ const { stripe } = require('../../services/subscriptionService');
 
 const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || 'php').toLowerCase();
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
-
+const STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID = process.env.STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID;
+const STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID = process.env.STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID;
 // ============================================
 // Revenue Stream 1: Learner Subscription
 // ============================================
@@ -15,14 +16,14 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 module.exports.createLearnerSession = async (req, res) => {
   try {
     const userId = req.user && req.user.user_id;
-    const { planId, priceId } = req.body;
+    const { planId } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!priceId) {
-      return res.status(400).json({ error: 'priceId is required' });
+    if (!planId) {
+      return res.status(400).json({ error: 'planId is required' });
     }
 
     // Verify user is a learner
@@ -34,12 +35,26 @@ module.exports.createLearnerSession = async (req, res) => {
       return res.status(403).json({ error: 'Only learners can subscribe to SigniFi Pro' });
     }
 
+    let stripePriceId;
+    if (planId === 'premium_monthly') {
+      stripePriceId = STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID;
+    } else if (planId === 'premium_yearly') {
+      stripePriceId = STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID;
+    } else {
+      return res.status(400).json({ error: `Invalid planId: ${planId}` });
+    }
+
+    if (!stripePriceId) {
+      console.error(`Stripe Price ID not configured for plan: ${planId}`);
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [
         {
-          price: priceId,
+          price: stripePriceId,
           quantity: 1,
         },
       ],
@@ -47,7 +62,7 @@ module.exports.createLearnerSession = async (req, res) => {
       cancel_url: `${BASE_URL}/subscription/cancel`,
       metadata: {
         learner_id: String(userId),
-        plan_id: planId || 'premium_monthly',
+        plan_id: planId,
       },
     });
 
