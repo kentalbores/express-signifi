@@ -195,7 +195,7 @@ const me = async (req, res) => {
  * body: { email: string, password: string, full_name?: string }
  * Creates a user and educator profile, and returns token + user
  */
-module.exports.registerEducator = async (req, res) => {
+const registerEducator = async (req, res) => {
   try {
     const { email, password, full_name, first_name, last_name } = req.body;
 
@@ -360,8 +360,10 @@ const loginOrRegisterWithProvider = async (req, res) => {
   }
 };
 
-module.exports.login = login;
-module.exports.register = register;
-module.exports.me = me;
-module.exports.registerEducator = module.exports.registerEducator;
-module.exports.loginOrRegisterWithProvider = loginOrRegisterWithProvider;
+module.exports = {
+  login,
+  register,
+  me,
+  registerEducator,
+  loginOrRegisterWithProvider                     
+};
