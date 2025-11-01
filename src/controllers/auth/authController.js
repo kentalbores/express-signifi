@@ -189,6 +189,14 @@ const me = async (req, res) => {
   }
 };
 
+module.exports = {
+  login,
+  register,
+  me,
+  registerEducator: module.exports.registerEducator,
+  loginOrRegisterWithProvider                     
+};
+
 // --- Educator Registration ---
 /**
  * POST /api/auth/register-educator
