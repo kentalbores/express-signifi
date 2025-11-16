@@ -5,6 +5,8 @@ const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || 'php').toLowerCase();
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID = process.env.STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID;
 const STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID = process.env.STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID;
+const STRIPE_INSTITUTION_PRO_MONTHLY_PRICE_ID = process.env.STRIPE_INSTITUTION_PRO_MONTHLY_PRICE_ID;
+const STRIPE_INSTITUTION_PRO_YEARLY_PRICE_ID = process.env.STRIPE_INSTITUTION_PRO_YEARLY_PRICE_ID;
 // ============================================
 // Revenue Stream 1: Learner Subscription
 // ============================================
@@ -177,14 +179,14 @@ module.exports.cancelLearnerSubscription = async (req, res) => {
 module.exports.createInstitutionSession = async (req, res) => {
   try {
     const userId = req.user && req.user.user_id;
-    const { planId, priceId } = req.body;
+    const { planId } = req.body;
 
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!priceId) {
-      return res.status(400).json({ error: 'priceId is required' });
+    if (!planId) {
+      return res.status(400).json({ error: 'planId is required' });
     }
 
     // Get institution admin and their institution
@@ -200,12 +202,27 @@ module.exports.createInstitutionSession = async (req, res) => {
 
     const institutionId = admin[0].institution_id;
 
+    // Map planId to Stripe Price ID
+    let stripePriceId;
+    if (planId === 'pro_monthly') {
+      stripePriceId = STRIPE_INSTITUTION_PRO_MONTHLY_PRICE_ID;
+    } else if (planId === 'pro_yearly') {
+      stripePriceId = STRIPE_INSTITUTION_PRO_YEARLY_PRICE_ID;
+    } else {
+      return res.status(400).json({ error: `Invalid planId: ${planId}. Valid options: pro_monthly, pro_yearly` });
+    }
+
+    if (!stripePriceId) {
+      console.error(`Stripe Price ID not configured for plan: ${planId}`);
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       line_items: [
         {
-          price: priceId,
+          price: stripePriceId,
           quantity: 1,
         },
       ],
@@ -213,7 +230,7 @@ module.exports.createInstitutionSession = async (req, res) => {
       cancel_url: `${BASE_URL}/institution/subscription/cancel`,
       metadata: {
         institution_id: String(institutionId),
-        plan_id: planId || 'pro_monthly',
+        plan_id: planId,
       },
     });
 
@@ -285,5 +302,63 @@ module.exports.getInstitutionStatus = async (req, res) => {
   } catch (error) {
     console.error('Error getting institution subscription status:', error);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+/**
+ * POST /api/subscriptions/cancel-institution
+ * Cancel institution subscription (at period end)
+ */
+module.exports.cancelInstitutionSubscription = async (req, res) => {
+  try {
+    const userId = req.user && req.user.user_id;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Get institution admin's institution
+    const admin = await sql`
+      SELECT institution_id FROM institutionadmin 
+      WHERE user_id = ${userId} 
+      LIMIT 1
+    `;
+
+    if (admin.length === 0) {
+      return res.status(403).json({ error: 'Not an institution admin' });
+    }
+
+    const institutionId = admin[0].institution_id;
+
+    const subscription = await sql`
+      SELECT stripe_subscription_id FROM institution_subscription 
+      WHERE institution_id = ${institutionId} 
+      LIMIT 1
+    `;
+
+    if (subscription.length === 0 || !subscription[0].stripe_subscription_id) {
+      return res.status(404).json({ error: 'No active subscription found' });
+    }
+
+    const stripeSubId = subscription[0].stripe_subscription_id;
+
+    // Cancel at period end in Stripe
+    await stripe.subscriptions.update(stripeSubId, {
+      cancel_at_period_end: true,
+    });
+
+    // Update database
+    await sql`
+      UPDATE institution_subscription
+      SET cancel_at_period_end = true, updated_at = NOW()
+      WHERE institution_id = ${institutionId}
+    `;
+
+    return res.status(200).json({ 
+      message: 'Subscription will be canceled at the end of the billing period' 
+    });
+  } catch (error) {
+    console.error('Error canceling institution subscription:', error);
+    return res.status(500).json({ error: 'Failed to cancel subscription' });
   }
 };

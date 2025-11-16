@@ -7,6 +7,7 @@ const {
   cancelLearnerSubscription,
   createInstitutionSession,
   getInstitutionStatus,
+  cancelInstitutionSubscription,
 } = require('../../controllers/subscription/subscriptionController');
 
 // Learner subscription routes
@@ -17,5 +18,6 @@ router.post('/cancel-learner', authenticateToken, requireLearner, cancelLearnerS
 // Institution subscription routes
 router.post('/create-institution-session', authenticateToken, requireInstitutionAdmin, createInstitutionSession);
 router.get('/institution-status', authenticateToken, requireInstitutionAdmin, getInstitutionStatus);
+router.post('/cancel-institution', authenticateToken, requireInstitutionAdmin, cancelInstitutionSubscription);
 
 module.exports = router;
