@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { login, register, me, registerEducator, loginOrRegisterWithProvider } = require('../../controllers/auth/authController');
+const { login, register, me, registerEducator, loginOrRegisterWithProvider, forgotPassword, resetPassword } = require('../../controllers/auth/authController');
 const { authenticateToken } = require('../../middleware/auth');
 
 /**
@@ -197,5 +197,9 @@ router.post('/register-educator', registerEducator);
 router.post('/oauth-login', loginOrRegisterWithProvider);
 // Protected routes
 router.get('/me', authenticateToken, me);
+
+// Password reset routes
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password/:userId/:token', resetPassword);
 
 module.exports = router;
