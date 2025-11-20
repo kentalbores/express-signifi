@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { getUserRoles } = require('../../middleware/auth');
 const fetch = require('node-fetch');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 // Get JWT secret from env
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -360,10 +361,142 @@ const loginOrRegisterWithProvider = async (req, res) => {
   }
 };
 
+// --- Password reset flow ---
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    // Find user by email
+    const users = await sql`
+      SELECT user_id, email
+      FROM useraccount
+      WHERE email = ${email}
+    `;
+
+    // Always respond with a generic message to avoid user enumeration
+    const genericResponse = { message: 'If an account with that email exists, a password reset link has been sent.' };
+    if (!users || users.length === 0) {
+      console.log(`Forgot password requested for non-existing email: ${email}`);
+      return res.json(genericResponse);
+    }
+
+    const user = users[0];
+
+    // Generate token and store its hash
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + (process.env.PASSWORD_RESET_EXPIRES_MINUTES ? parseInt(process.env.PASSWORD_RESET_EXPIRES_MINUTES, 10) * 60000 : 60 * 60 * 1000)); // default 60 minutes
+
+    await sql`
+      INSERT INTO password_resets (user_id, token_hash, expires_at, created_at)
+      VALUES (${user.user_id}, ${tokenHash}, ${expiresAt}, now())
+    `;
+
+    // Build reset link (frontend should implement the route to capture userId and token)
+    const frontendBase = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+    const resetLink = `${frontendBase.replace(/\/$/, '')}/reset-password/${user.user_id}/${token}`;
+
+    // Send email if SMTP configured, otherwise log reset link for development
+    const smtpHost = process.env.SMTP_HOST;
+    if (smtpHost && process.env.SMTP_PORT && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT, 10),
+          secure: (process.env.SMTP_SECURE === 'true'),
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          }
+        });
+
+        const fromAddress = process.env.EMAIL_FROM || 'no-reply@example.com';
+        const mailOptions = {
+          from: fromAddress,
+          to: user.email,
+          subject: 'Password reset request',
+          text: `You requested a password reset. Use the link below to reset your password (expires in ${process.env.PASSWORD_RESET_EXPIRES_MINUTES || 60} minutes):\n\n${resetLink}`,
+          html: `<p>You requested a password reset. Click the link below to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p><p>This link expires in ${process.env.PASSWORD_RESET_EXPIRES_MINUTES || 60} minutes.</p>`
+        };
+
+        await transporter.sendMail(mailOptions);
+      } catch (err) {
+        console.error('Error sending password reset email:', err);
+        console.log('Reset link (dev):', resetLink);
+      }
+    } else {
+      console.log('Password reset link (no SMTP configured):', resetLink);
+    }
+
+    return res.json(genericResponse);
+  } catch (error) {
+    console.error('Error in forgotPassword:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { userId, token } = req.params;
+    const { newPassword } = req.body;
+
+    if (!userId || !token || !newPassword) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    const rows = await sql`
+      SELECT id, user_id, token_hash, expires_at, used_at
+      FROM password_resets
+      WHERE user_id = ${userId} AND token_hash = ${tokenHash}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+
+    const resetRow = rows[0];
+    const now = new Date();
+    if (resetRow.used_at) {
+      return res.status(400).json({ error: 'Token already used' });
+    }
+    if (new Date(resetRow.expires_at) < now) {
+      return res.status(400).json({ error: 'Token expired' });
+    }
+
+    // Update user password
+    const saltRounds = 10;
+    const hashed = await bcrypt.hash(newPassword, saltRounds);
+    await sql`
+      UPDATE useraccount
+      SET password = ${hashed}
+      WHERE user_id = ${userId}
+    `;
+
+    // Mark token as used
+    await sql`
+      UPDATE password_resets
+      SET used_at = now()
+      WHERE id = ${resetRow.id}
+    `;
+
+    return res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Error in resetPassword:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   login,
   register,
   me,
   registerEducator,
-  loginOrRegisterWithProvider                     
+  loginOrRegisterWithProvider,
+  forgotPassword,
+  resetPassword
 };

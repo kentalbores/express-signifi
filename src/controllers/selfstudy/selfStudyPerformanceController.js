@@ -3,6 +3,8 @@ const sql = require('../../config/database');
 // Create or update self-study performance record
 const recordPerformance = async (req, res) => {
     try {
+        console.log('📝 Recording self-study performance:', req.body);
+        
         const { 
             user_id,
             lesson_identifier,
@@ -19,6 +21,7 @@ const recordPerformance = async (req, res) => {
 
         // Validate required fields
         if (!user_id || !lesson_identifier) {
+            console.error('❌ Missing required fields:', { user_id, lesson_identifier });
             return res.status(400).json({
                 success: false,
                 error: 'Missing required fields: user_id and lesson_identifier are required'
@@ -64,7 +67,7 @@ const recordPerformance = async (req, res) => {
             // Update existing record or create new attempt
             const shouldCreateNewAttempt = attempt_number > existingRecord[0].attempt_number;
             
-            if (shouldCreateNewAttempt) {
+                if (shouldCreateNewAttempt) {
                 // Create new attempt
                 result = await sql`
                     INSERT INTO selfstudy_lesson_performance (
@@ -76,8 +79,8 @@ const recordPerformance = async (req, res) => {
                         ${user_id}, ${lesson_identifier}, ${lesson_type || null}, ${score}, 
                         ${max_score}, ${calculatedPercentage}, ${time_spent_seconds},
                         ${performance_data || null}, ${completed_levels || null}, ${is_completed},
-                        ${attempt_number}, CURRENT_TIMESTAMP, 
-                        ${is_completed ? sql`CURRENT_TIMESTAMP` : null}
+                        ${attempt_number}, NOW(), 
+                        ${is_completed ? sql`NOW()` : null}
                     )
                     RETURNING performance_id, user_id, lesson_identifier, lesson_type, score, 
                              max_score, percentage, time_spent_seconds, performance_data,
@@ -95,7 +98,7 @@ const recordPerformance = async (req, res) => {
                         performance_data = ${performance_data || null},
                         completed_levels = ${completed_levels || null},
                         is_completed = ${is_completed},
-                        completed_at = ${is_completed ? sql`CURRENT_TIMESTAMP` : null}
+                        completed_at = ${is_completed ? sql`NOW()` : null}
                     WHERE user_id = ${user_id} AND lesson_identifier = ${lesson_identifier} 
                           AND attempt_number = ${attempt_number}
                     RETURNING performance_id, user_id, lesson_identifier, lesson_type, score, 
@@ -115,8 +118,8 @@ const recordPerformance = async (req, res) => {
                     ${user_id}, ${lesson_identifier}, ${lesson_type || null}, ${score}, 
                     ${max_score}, ${calculatedPercentage}, ${time_spent_seconds},
                     ${performance_data || null}, ${completed_levels || null}, ${is_completed},
-                    ${attempt_number}, CURRENT_TIMESTAMP, 
-                    ${is_completed ? sql`CURRENT_TIMESTAMP` : null}
+                    ${attempt_number}, NOW(), 
+                    ${is_completed ? sql`NOW()` : null}
                 )
                 RETURNING performance_id, user_id, lesson_identifier, lesson_type, score, 
                          max_score, percentage, time_spent_seconds, performance_data,
@@ -124,6 +127,8 @@ const recordPerformance = async (req, res) => {
             `;
         }
 
+        console.log('✅ Performance recorded successfully:', result[0]);
+        
         res.status(201).json({
             success: true,
             message: 'Performance recorded successfully',
@@ -131,16 +136,32 @@ const recordPerformance = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error recording performance:', error);
+        console.error('❌ Error recording performance:', {
+            message: error.message,
+            code: error.code,
+            detail: error.detail,
+            hint: error.hint,
+            position: error.position
+        });
+        
         if (error.code === '23503') {
             return res.status(400).json({
                 success: false,
                 error: 'Invalid user_id: user does not exist'
             });
         }
+        
+        if (error.code === '42P01') {
+            return res.status(500).json({
+                success: false,
+                error: 'Database table not found. Please ensure the selfstudy_lesson_performance table exists.'
+            });
+        }
+        
         res.status(500).json({
             success: false,
-            error: 'Internal server error'
+            error: 'Internal server error',
+            detail: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 };

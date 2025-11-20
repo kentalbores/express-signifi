@@ -93,6 +93,8 @@ module.exports.getLearnerStatus = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    console.log(`📊 Checking subscription status for learner_id: ${userId}`);
+
     const subscription = await sql`
       SELECT * FROM learner_subscription 
       WHERE learner_id = ${userId} 
@@ -100,6 +102,7 @@ module.exports.getLearnerStatus = async (req, res) => {
     `;
 
     if (subscription.length === 0) {
+      console.log(`ℹ️ No subscription found for learner_id: ${userId}, returning free status`);
       return res.status(200).json({
         status: 'free',
         plan_id: 'free',
@@ -110,15 +113,26 @@ module.exports.getLearnerStatus = async (req, res) => {
     const sub = subscription[0];
     const isPremium = sub.status === 'active' || sub.status === 'trialing';
 
+    console.log(`✅ Subscription found for learner_id: ${userId}`, {
+      status: sub.status,
+      plan_id: sub.plan_id,
+      isPremium,
+      stripe_subscription_id: sub.stripe_subscription_id,
+      current_period_start: sub.current_period_start,
+      current_period_end: sub.current_period_end,
+    });
+
     return res.status(200).json({
       status: sub.status,
       plan_id: sub.plan_id,
       isPremium,
+      current_period_start: sub.current_period_start,
       current_period_end: sub.current_period_end,
       cancel_at_period_end: sub.cancel_at_period_end,
+      stripe_subscription_id: sub.stripe_subscription_id,
     });
   } catch (error) {
-    console.error('Error getting learner subscription status:', error);
+    console.error('❌ Error getting learner subscription status:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
@@ -360,5 +374,55 @@ module.exports.cancelInstitutionSubscription = async (req, res) => {
   } catch (error) {
     console.error('Error canceling institution subscription:', error);
     return res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+};
+
+/**
+ * GET /api/subscriptions/plans
+ * Get available subscription plans with pricing
+ */
+module.exports.getSubscriptionPlans = async (req, res) => {
+  try {
+    // Return hardcoded plans for now (could fetch from Stripe in the future)
+    const plans = [
+      {
+        id: 'premium_monthly',
+        name: 'Premium Monthly',
+        description: 'Full access to all courses and features',
+        price: 199,
+        currency: 'PHP',
+        interval: 'month',
+        stripePriceId: STRIPE_LEARNER_PREMIUM_MONTHLY_PRICE_ID,
+        features: [
+          'Unlimited Access to All Courses',
+          'Advanced Progress Tracking',
+          'Offline Course Downloads',
+          'Priority Support',
+          'Ad-Free Experience'
+        ]
+      },
+      {
+        id: 'premium_yearly',
+        name: 'Premium Yearly',
+        description: 'Full access to all courses and features - Save 16%!',
+        price: 1499,
+        currency: 'PHP',
+        interval: 'year',
+        stripePriceId: STRIPE_LEARNER_PREMIUM_YEARLY_PRICE_ID,
+        features: [
+          'Unlimited Access to All Courses',
+          'Advanced Progress Tracking',
+          'Offline Course Downloads',
+          'Priority Support',
+          'Ad-Free Experience',
+          'Save 16% compared to monthly'
+        ]
+      }
+    ];
+
+    return res.status(200).json(plans);
+  } catch (error) {
+    console.error('Error fetching subscription plans:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 };

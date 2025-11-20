@@ -256,11 +256,32 @@ module.exports.stripeWebhook = async (req, res) => {
         const stripeCustomerId = session.customer;
 
         try {
+          // Fetch subscription details from Stripe to get period dates
+          let periodStart = null;
+          let periodEnd = null;
+          
+          if (stripeSubscriptionId) {
+            try {
+              const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+              if (stripeSubscription.current_period_start) {
+                periodStart = new Date(stripeSubscription.current_period_start * 1000);
+              }
+              if (stripeSubscription.current_period_end) {
+                periodEnd = new Date(stripeSubscription.current_period_end * 1000);
+              }
+              console.log(`Fetched Stripe subscription periods: start=${periodStart}, end=${periodEnd}`);
+            } catch (stripeErr) {
+              console.error('Error fetching Stripe subscription details:', stripeErr);
+            }
+          }
+
           await sql`
             INSERT INTO learner_subscription (
-              learner_id, plan_id, stripe_subscription_id, stripe_customer_id, status
+              learner_id, plan_id, stripe_subscription_id, stripe_customer_id, status, 
+              current_period_start, current_period_end
             ) VALUES (
-              ${learnerId}, ${planId}, ${stripeSubscriptionId}, ${stripeCustomerId}, 'active'
+              ${learnerId}, ${planId}, ${stripeSubscriptionId}, ${stripeCustomerId}, 'active',
+              ${periodStart}, ${periodEnd}
             )
             ON CONFLICT (learner_id) 
             DO UPDATE SET
@@ -268,11 +289,13 @@ module.exports.stripeWebhook = async (req, res) => {
               stripe_subscription_id = ${stripeSubscriptionId},
               stripe_customer_id = ${stripeCustomerId},
               status = 'active',
+              current_period_start = ${periodStart},
+              current_period_end = ${periodEnd},
               updated_at = NOW()
           `;
-          console.log(`Learner subscription activated for learner_id: ${learnerId}`);
+          console.log(`✅ Learner subscription activated for learner_id: ${learnerId}, status: active, period: ${periodStart} to ${periodEnd}`);
         } catch (err) {
-          console.error('Error updating learner subscription:', err);
+          console.error('❌ Error updating learner subscription:', err);
         }
       }
 
@@ -456,6 +479,65 @@ module.exports.stripeWebhook = async (req, res) => {
   }
 
   return res.status(200).json({ received: true });
+};
+
+// GET /api/payments/orders
+// Get learner's order history
+module.exports.getOrderHistory = async (req, res) => {
+  try {
+    const learnerId = req.user && req.user.user_id;
+
+    if (!learnerId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Get all orders for this learner
+    const orders = await sql`
+      SELECT 
+        o.order_id,
+        o.order_number,
+        o.created_at as date,
+        o.total_amount as total,
+        o.currency,
+        o.status
+      FROM course_order o
+      WHERE o.user_id = ${learnerId}
+      ORDER BY o.created_at DESC
+    `;
+
+    // For each order, get the order items
+    const ordersWithItems = await Promise.all(
+      orders.map(async (order) => {
+        const items = await sql`
+          SELECT 
+            oi.course_id as courseId,
+            c.title,
+            oi.final_price as price
+          FROM order_item oi
+          LEFT JOIN course c ON oi.course_id = c.course_id
+          WHERE oi.order_id = ${order.order_id}
+        `;
+
+        return {
+          orderNumber: order.order_number,
+          date: order.date,
+          total: Number(order.total),
+          currency: order.currency,
+          status: order.status,
+          items: items.map(item => ({
+            courseId: item.courseid,
+            title: item.title || 'Unknown Course',
+            price: Number(item.price)
+          }))
+        };
+      })
+    );
+
+    return res.status(200).json({ orders: ordersWithItems });
+  } catch (error) {
+    console.error('Error fetching order history:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 };
 
 
