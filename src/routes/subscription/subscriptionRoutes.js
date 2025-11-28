@@ -8,7 +8,11 @@ const {
   createInstitutionSession,
   getInstitutionStatus,
   cancelInstitutionSubscription,
+  getSubscriptionPlans,
 } = require('../../controllers/subscription/subscriptionController');
+
+// Public routes (no auth required)
+router.get('/plans', getSubscriptionPlans);
 
 // Learner subscription routes
 router.post('/create-learner-session', authenticateToken, requireLearner, createLearnerSession);
