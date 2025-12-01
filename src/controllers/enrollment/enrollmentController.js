@@ -186,18 +186,18 @@ const createEnrollment = async (req, res) => {
 const getAllEnrollments = async (req, res) => {
     try {
         const { learner_id, course_id } = req.query;
-        
+
         // Build WHERE conditions dynamically
         let whereClause = sql``;
         const conditions = [];
-        
+
         if (learner_id) {
             conditions.push(sql`e.learner_id = ${learner_id}`);
         }
         if (course_id) {
             conditions.push(sql`e.course_id = ${course_id}`);
         }
-        
+
         // Combine conditions with AND
         if (conditions.length > 0) {
             whereClause = conditions.reduce((acc, condition, index) => {
@@ -207,7 +207,7 @@ const getAllEnrollments = async (req, res) => {
                 return sql`${acc} AND ${condition}`;
             }, sql``);
         }
-        
+
         const enrollments = await sql`
             SELECT e.enrollment_id as enroll_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
                    (u.first_name || ' ' || u.last_name) AS learner_name, c.title AS course_title
@@ -217,7 +217,7 @@ const getAllEnrollments = async (req, res) => {
             ${whereClause}
             ORDER BY e.enrolled_at DESC
         `;
-        
+
         res.status(200).json({ message: 'Enrollments retrieved successfully', enrollments });
     } catch (error) {
         console.error('Error fetching enrollments:', error);
@@ -230,7 +230,7 @@ const getEnrollmentById = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
-        
+
         const result = await sql`
             SELECT e.enrollment_id as enroll_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
                    c.title as course_title, c.difficulty_level, c.estimated_duration_hours,
@@ -240,20 +240,20 @@ const getEnrollmentById = async (req, res) => {
             LEFT JOIN useraccount u ON e.learner_id = u.user_id
             WHERE e.enrollment_id = ${id}
         `;
-        
+
         if (result.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
-        
+
         const enrollment = result[0];
-        
+
         // Add progress tracking
         const progress = await calculateEnrollmentProgress(
-            enrollment.enroll_id, 
-            enrollment.learner_id, 
+            enrollment.enroll_id,
+            enrollment.learner_id,
             enrollment.course_id
         );
-        
-        res.status(200).json({ 
-            message: 'Enrollment retrieved successfully', 
+
+        res.status(200).json({
+            message: 'Enrollment retrieved successfully',
             enrollment: {
                 ...enrollment,
                 progress: progress
@@ -313,20 +313,20 @@ const getEnrollmentProgress = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
-        
+
         const enrollment = await sql`
             SELECT enrollment_id, learner_id, course_id, status 
             FROM enrollment WHERE enrollment_id = ${id}
         `;
-        
+
         if (enrollment.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
-        
+
         const progress = await calculateEnrollmentProgress(
             enrollment[0].enrollment_id,
             enrollment[0].learner_id,
             enrollment[0].course_id
         );
-        
+
         // Get lesson-by-lesson breakdown with defensive querying
         let lessonProgress = [];
         try {
@@ -362,7 +362,7 @@ const getEnrollmentProgress = async (req, res) => {
                 console.error('Fallback lesson query also failed:', fallbackError);
             }
         }
-        
+
         res.status(200).json({
             message: 'Enrollment progress retrieved successfully',
             enrollment_id: id,
@@ -380,7 +380,7 @@ const getEnrollmentProgress = async (req, res) => {
             column: error.column_name,
             stack: error.stack
         });
-        res.status(500).json({ 
+        res.status(500).json({
             error: 'Internal server error',
             detail: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
@@ -392,38 +392,38 @@ const generateEnrollmentCertificate = async (req, res) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid enrollment ID' });
-        
+
         const enrollment = await sql`
             SELECT enrollment_id, learner_id, course_id, status 
             FROM enrollment WHERE enrollment_id = ${id}
         `;
-        
+
         if (enrollment.length === 0) return res.status(404).json({ error: 'Enrollment not found' });
-        
+
         // Check if enrollment is completed
         const progress = await calculateEnrollmentProgress(
             enrollment[0].enrollment_id,
             enrollment[0].learner_id,
             enrollment[0].course_id
         );
-        
+
         if (!progress.is_completed) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 error: 'Cannot generate certificate: course not completed',
                 progress: progress.progress_percentage
             });
         }
-        
+
         const certificateResult = await generateCertificate(
             enrollment[0].enrollment_id,
             enrollment[0].learner_id,
             enrollment[0].course_id
         );
-        
+
         if (!certificateResult.success && !certificateResult.exists) {
             return res.status(500).json({ error: certificateResult.error });
         }
-        
+
         // Update enrollment status to completed if certificate generated
         if (certificateResult.success) {
             await sql`
@@ -431,7 +431,7 @@ const generateEnrollmentCertificate = async (req, res) => {
                 WHERE enrollment_id = ${id}
             `;
         }
-        
+
         res.status(200).json({
             message: certificateResult.exists ? 'Certificate already exists' : 'Certificate generated successfully',
             certificate: certificateResult.certificate || { certificate_id: certificateResult.certificate_id }
@@ -447,7 +447,7 @@ const getEnrollmentAnalytics = async (req, res) => {
     try {
         const { learner_id } = req.params;
         if (!learner_id || isNaN(learner_id)) return res.status(400).json({ error: 'Invalid learner ID' });
-        
+
         // Get enrollment summary
         const summary = await sql`
             SELECT 
@@ -457,7 +457,7 @@ const getEnrollmentAnalytics = async (req, res) => {
                 COUNT(CASE WHEN status = 'paused' THEN 1 END) as paused_courses
             FROM enrollment WHERE learner_id = ${learner_id}
         `;
-        
+
         // Get detailed enrollments with progress
         const enrollments = await sql`
             SELECT e.enrollment_id, e.course_id, e.status, e.enrolled_at,
@@ -467,7 +467,7 @@ const getEnrollmentAnalytics = async (req, res) => {
             WHERE e.learner_id = ${learner_id}
             ORDER BY e.enrolled_at DESC
         `;
-        
+
         // Calculate progress for each enrollment
         const enrollmentsWithProgress = await Promise.all(
             enrollments.map(async (enrollment) => {
@@ -479,15 +479,15 @@ const getEnrollmentAnalytics = async (req, res) => {
                 return { ...enrollment, progress };
             })
         );
-        
+
         // Calculate learning statistics
-        const totalTimeSpent = enrollmentsWithProgress.reduce((sum, e) => 
+        const totalTimeSpent = enrollmentsWithProgress.reduce((sum, e) =>
             sum + (e.progress.total_time_spent_seconds || 0), 0);
-        const averageScore = enrollmentsWithProgress.length > 0 
-            ? Math.round(enrollmentsWithProgress.reduce((sum, e) => 
+        const averageScore = enrollmentsWithProgress.length > 0
+            ? Math.round(enrollmentsWithProgress.reduce((sum, e) =>
                 sum + (e.progress.average_score || 0), 0) / enrollmentsWithProgress.length)
             : 0;
-        
+
         res.status(200).json({
             message: 'Enrollment analytics retrieved successfully',
             learner_id: learner_id,
@@ -495,14 +495,72 @@ const getEnrollmentAnalytics = async (req, res) => {
             statistics: {
                 total_time_spent_hours: Math.round(totalTimeSpent / 3600),
                 average_score: averageScore,
-                completion_rate: summary[0].total_enrollments > 0 
-                    ? Math.round((summary[0].completed_courses / summary[0].total_enrollments) * 100) 
+                completion_rate: summary[0].total_enrollments > 0
+                    ? Math.round((summary[0].completed_courses / summary[0].total_enrollments) * 100)
                     : 0
             },
             enrollments: enrollmentsWithProgress
         });
     } catch (error) {
         console.error('Error fetching enrollment analytics:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+// Check if authenticated user is enrolled in a specific course
+const checkEnrollment = async (req, res) => {
+    try {
+        const { course_id } = req.query;
+
+        // Validate course_id
+        if (!course_id || isNaN(course_id)) {
+            return res.status(400).json({ error: 'Invalid or missing course_id parameter' });
+        }
+
+        // Get authenticated user's ID from token
+        const learnerId = req.user?.userId;
+        if (!learnerId) {
+            return res.status(401).json({ error: 'User not authenticated' });
+        }
+
+        // Check for enrollment
+        const enrollment = await sql`
+            SELECT e.enrollment_id, e.learner_id, e.course_id, e.status, e.enrolled_at,
+                   c.title as course_title, c.difficulty_level, c.estimated_duration_hours
+            FROM enrollment e
+            LEFT JOIN course c ON e.course_id = c.course_id
+            WHERE e.learner_id = ${learnerId} 
+            AND e.course_id = ${course_id}
+            AND e.status IN ('active', 'completed')
+            ORDER BY e.enrolled_at DESC
+            LIMIT 1
+        `;
+
+        if (enrollment.length > 0) {
+            // Add progress tracking for enrolled users
+            const progress = await calculateEnrollmentProgress(
+                enrollment[0].enrollment_id,
+                learnerId,
+                course_id
+            );
+
+            return res.status(200).json({
+                success: true,
+                isEnrolled: true,
+                enrollment: {
+                    ...enrollment[0],
+                    progress
+                }
+            });
+        }
+
+        // Not enrolled
+        return res.status(200).json({
+            success: true,
+            isEnrolled: false
+        });
+    } catch (error) {
+        console.error('Error checking enrollment:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -515,7 +573,8 @@ module.exports = {
     deleteEnrollment,
     getEnrollmentProgress,
     generateEnrollmentCertificate,
-    getEnrollmentAnalytics
+    getEnrollmentAnalytics,
+    checkEnrollment
 };
 
 

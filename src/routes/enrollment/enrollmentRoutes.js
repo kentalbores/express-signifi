@@ -173,9 +173,13 @@ const {
     deleteEnrollment,
     getEnrollmentProgress,
     generateEnrollmentCertificate,
-    getEnrollmentAnalytics
+    getEnrollmentAnalytics,
+    checkEnrollment
 } = require('../../controllers/enrollment/enrollmentController');
 const { authenticateToken, requireLearner, requireAdminRole } = require('../../middleware/auth');
+
+// Check enrollment route - must be before /:id to avoid conflict
+router.get('/check', authenticateToken, checkEnrollment);           // GET /api/enrollments/check?course_id=X
 
 // Public enrollment routes
 router.get('/', authenticateToken, getAllEnrollments);             // GET /api/enrollments (authenticated users)
