@@ -58,7 +58,7 @@ const login = async (req, res) => {
 
     // Generate token with roles
     const token = await generateToken(user);
-    
+
     // Get user roles for response
     const roles = await getUserRoles(user.user_id);
 
@@ -122,7 +122,7 @@ const register = async (req, res) => {
 
     // Generate token with roles
     const token = await generateToken(user);
-    
+
     // Get user roles for response
     const roles = await getUserRoles(user.user_id);
 
@@ -173,7 +173,7 @@ const me = async (req, res) => {
 
     const user = users[0];
     const { password: _, ...userWithoutPassword } = user;
-    
+
     // Include roles from auth middleware
     const roles = req.user.roles || [];
 
@@ -227,7 +227,7 @@ const registerEducator = async (req, res) => {
       VALUES (${user.user_id})
     `;
     const token = await generateToken(user);
-    
+
     // Get user roles for response
     const roles = await getUserRoles(user.user_id);
 
@@ -257,41 +257,70 @@ const registerEducator = async (req, res) => {
  * Verifies Supabase token, then logs in or registers a user locally.
  */
 const loginOrRegisterWithProvider = async (req, res) => {
+  console.log('═══ OAuth Login Request Received ═══');
+  console.log('Request body:', req.body);
+
   const { provider_token } = req.body;
 
   if (!provider_token) {
+    console.error('❌ Missing provider_token in request body');
     return res.status(400).json({ error: 'provider_token is required' });
   }
+
+  console.log('✅ Provider token received, verifying with Supabase...');
 
   // 1. Verify the token with Supabase
   let supabaseUser;
   try {
-    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase environment variables');
+      console.error('SUPABASE_URL:', supabaseUrl ? 'Set' : 'NOT SET');
+      console.error('SUPABASE_ANON_KEY:', supabaseKey ? 'Set' : 'NOT SET');
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
+    console.log('🔗 Calling Supabase API:', `${supabaseUrl}/auth/v1/user`);
+
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
       headers: {
         Authorization: `Bearer ${provider_token}`,
-        apikey: `${process.env.SUPABASE_ANON_KEY}`,
+        apikey: supabaseKey,
       },
     });
 
+    console.log('📡 Supabase response status:', response.status);
+
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Supabase token verification failed:', errorData);
+      console.error('❌ Supabase token verification failed:', errorData);
       return res.status(401).json({ error: 'Invalid provider token' });
     }
 
     supabaseUser = await response.json();
+    console.log('✅ Supabase user retrieved:', {
+      email: supabaseUser.email,
+      id: supabaseUser.id,
+      hasMetadata: !!supabaseUser.user_metadata
+    });
+
     if (!supabaseUser || !supabaseUser.email) {
+      console.error('❌ No email in Supabase user response');
       return res.status(401).json({ error: 'Failed to get user details from provider' });
     }
 
   } catch (error) {
-    console.error('Error verifying Supabase token:', error);
+    console.error('❌ Error verifying Supabase token:', error);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({ error: 'Internal server error during token verification' });
   }
 
   // 2. Find or create user in *your* local database
   try {
     const { email, user_metadata } = supabaseUser;
+    console.log('🔍 Looking up user by email:', email);
 
     // Check if user already exists
     const existingUsers = await sql`
@@ -304,7 +333,7 @@ const loginOrRegisterWithProvider = async (req, res) => {
 
     // 3. If user does NOT exist, create them
     if (!user) {
-      console.log(`User ${email} not found locally, creating new user...`);
+      console.log(`➕ User ${email} not found locally, creating new user...`);
 
       // Get names from metadata
       let firstName = user_metadata?.first_name || '';
@@ -315,6 +344,8 @@ const loginOrRegisterWithProvider = async (req, res) => {
         firstName = parts.shift() || '';
         lastName = parts.length ? parts.join(' ') : '';
       }
+
+      console.log('User metadata:', { firstName, lastName, full_name: user_metadata?.full_name });
 
       // Create a secure, random password for the user since they don't have one
       const randomPassword = crypto.randomBytes(32).toString('hex');
@@ -327,18 +358,25 @@ const loginOrRegisterWithProvider = async (req, res) => {
         RETURNING user_id, email, first_name, last_name, created_at
       `;
       user = result[0];
+      console.log('✅ User created with ID:', user.user_id);
 
       // Also create their learner profile (mirroring your 'register' function)
       await sql`
         INSERT INTO learner (user_id, status, learning_streak, total_points, level)
         VALUES (${user.user_id}, 'active', 0, 0, 1)
       `;
+      console.log('✅ Learner profile created');
+    } else {
+      console.log('✅ Existing user found with ID:', user.user_id);
     }
 
     // 4. User exists (or was just created), generate YOUR app's JWT
+    console.log('🔑 Generating JWT token...');
     const token = await generateToken(user);
     const roles = await getUserRoles(user.user_id);
+    console.log('✅ Token generated, roles:', roles);
 
+    console.log('✅ OAuth login successful, sending response');
     res.status(200).json({
       message: user ? 'Login successful' : 'User registered and logged in successfully',
       token,
@@ -352,7 +390,8 @@ const loginOrRegisterWithProvider = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error during OAuth login/registration:', error);
+    console.error('❌ Error during OAuth login/registration:', error);
+    console.error('Error stack:', error.stack);
     // Handle duplicate email race condition (though find-first should prevent it)
     if (error.code === '23505') {
       return res.status(409).json({ error: 'User with this email already exists' });
