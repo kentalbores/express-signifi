@@ -123,8 +123,8 @@ module.exports.createCoursePayment = async (req, res) => {
     const educatorStripeId = payoutDetails.stripeAccountId;
 
     if (!educatorStripeId) {
-      return res.status(400).json({ 
-        error: 'Educator payment account not configured. Please contact support.' 
+      return res.status(400).json({
+        error: 'Educator payment account not configured. Please contact support.'
       });
     }
 
@@ -259,7 +259,7 @@ module.exports.stripeWebhook = async (req, res) => {
           // Fetch subscription details from Stripe to get period dates
           let periodStart = null;
           let periodEnd = null;
-          
+
           if (stripeSubscriptionId) {
             try {
               const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
@@ -536,6 +536,61 @@ module.exports.getOrderHistory = async (req, res) => {
     return res.status(200).json({ orders: ordersWithItems });
   } catch (error) {
     console.error('Error fetching order history:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// GET /api/payments/methods
+// Get saved payment methods for learner
+module.exports.getPaymentMethods = async (req, res) => {
+  try {
+    const learnerId = req.user && req.user.user_id;
+
+    if (!learnerId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Get learner's subscription to find stripe_customer_id
+    const subscriptions = await sql`
+      SELECT stripe_customer_id
+      FROM learner_subscription
+      WHERE learner_id = ${learnerId}
+      LIMIT 1
+    `;
+
+    // If no subscription or no customer ID, return empty array
+    if (subscriptions.length === 0 || !subscriptions[0].stripe_customer_id) {
+      return res.status(200).json([]);
+    }
+
+    const stripeCustomerId = subscriptions[0].stripe_customer_id;
+
+    // Fetch payment methods from Stripe
+    try {
+      const paymentMethods = await stripe.paymentMethods.list({
+        customer: stripeCustomerId,
+        type: 'card',
+      });
+
+      // Map to frontend format
+      const formattedMethods = paymentMethods.data.map(pm => ({
+        id: pm.id,
+        type: pm.type,
+        card: pm.card ? {
+          brand: pm.card.brand,
+          last4: pm.card.last4,
+          expiryMonth: pm.card.exp_month,
+          expiryYear: pm.card.exp_year,
+        } : undefined,
+      }));
+
+      return res.status(200).json(formattedMethods);
+    } catch (stripeErr) {
+      console.error('Error fetching payment methods from Stripe:', stripeErr);
+      return res.status(500).json({ error: 'Failed to fetch payment methods' });
+    }
+  } catch (error) {
+    console.error('Error in getPaymentMethods:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
