@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireLearner } = require('../../middleware/auth');
-const { createCoursePayment, stripeWebhook, getOrderHistory } = require('../../controllers/payment/paymentController');
+const { createCoursePayment, stripeWebhook, getOrderHistory, getPaymentMethods } = require('../../controllers/payment/paymentController');
 
 /**
  * @swagger
@@ -95,6 +95,7 @@ const { createCoursePayment, stripeWebhook, getOrderHistory } = require('../../c
 router.post('/intent', authenticateToken, requireLearner, createCoursePayment);
 router.post('/create-course-payment', authenticateToken, requireLearner, createCoursePayment);
 router.get('/orders', authenticateToken, requireLearner, getOrderHistory);
+router.get('/methods', authenticateToken, requireLearner, getPaymentMethods);
 
 module.exports = {
   paymentsRouter: router,
