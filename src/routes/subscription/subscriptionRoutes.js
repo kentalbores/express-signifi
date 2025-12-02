@@ -9,10 +9,14 @@ const {
   getInstitutionStatus,
   cancelInstitutionSubscription,
   getSubscriptionPlans,
+  handleSuccess,
+  handleCancel,
 } = require('../../controllers/subscription/subscriptionController');
 
 // Public routes (no auth required)
 router.get('/plans', getSubscriptionPlans);
+router.get('/success', handleSuccess);
+router.get('/cancel', handleCancel);
 
 // Learner subscription routes
 router.post('/create-learner-session', authenticateToken, requireLearner, createLearnerSession);

@@ -60,8 +60,8 @@ module.exports.createLearnerSession = async (req, res) => {
           quantity: 1,
         },
       ],
-      success_url: `${BASE_URL}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${BASE_URL}/subscription/cancel`,
+      success_url: `${BASE_URL}/api/subscriptions/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${BASE_URL}/api/subscriptions/cancel`,
       metadata: {
         learner_id: String(userId),
         plan_id: planId,
@@ -74,9 +74,9 @@ module.exports.createLearnerSession = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating learner subscription session:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to create subscription session',
-      detail: error.message 
+      detail: error.message
     });
   }
 };
@@ -138,6 +138,25 @@ module.exports.getLearnerStatus = async (req, res) => {
 };
 
 /**
+ * GET /api/subscriptions/success
+ * Handle successful subscription redirect
+ */
+module.exports.handleSuccess = async (req, res) => {
+  // Redirect to the mobile app
+  // You might want to pass some status or message
+  res.redirect('SigniFi://(screens)/premium?status=success');
+};
+
+/**
+ * GET /api/subscriptions/cancel
+ * Handle cancelled subscription redirect
+ */
+module.exports.handleCancel = async (req, res) => {
+  // Redirect to the mobile app
+  res.redirect('SigniFi://(screens)/premium?status=cancelled');
+};
+
+/**
  * POST /api/subscriptions/cancel-learner
  * Cancel learner subscription (at period end)
  */
@@ -173,8 +192,8 @@ module.exports.cancelLearnerSubscription = async (req, res) => {
       WHERE learner_id = ${userId}
     `;
 
-    return res.status(200).json({ 
-      message: 'Subscription will be canceled at the end of the billing period' 
+    return res.status(200).json({
+      message: 'Subscription will be canceled at the end of the billing period'
     });
   } catch (error) {
     console.error('Error canceling learner subscription:', error);
@@ -254,9 +273,9 @@ module.exports.createInstitutionSession = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating institution subscription session:', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to create subscription session',
-      detail: error.message 
+      detail: error.message
     });
   }
 };
@@ -368,8 +387,8 @@ module.exports.cancelInstitutionSubscription = async (req, res) => {
       WHERE institution_id = ${institutionId}
     `;
 
-    return res.status(200).json({ 
-      message: 'Subscription will be canceled at the end of the billing period' 
+    return res.status(200).json({
+      message: 'Subscription will be canceled at the end of the billing period'
     });
   } catch (error) {
     console.error('Error canceling institution subscription:', error);
