@@ -595,4 +595,73 @@ module.exports.getPaymentMethods = async (req, res) => {
   }
 };
 
+// POST /api/payments/setup-intent
+// Create a SetupIntent for saving a new payment method
+module.exports.createSetupIntent = async (req, res) => {
+  try {
+    const learnerId = req.user && req.user.user_id;
+    const email = req.user && req.user.email;
+    const name = req.user && (req.user.first_name + ' ' + req.user.last_name);
+
+    if (!learnerId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // 1. Get or create Stripe Customer
+    let stripeCustomerId;
+
+    // Check if learner already has a subscription record with stripe_customer_id
+    const subscriptions = await sql`
+      SELECT stripe_customer_id
+      FROM learner_subscription
+      WHERE learner_id = ${learnerId}
+      LIMIT 1
+    `;
+
+    if (subscriptions.length > 0 && subscriptions[0].stripe_customer_id) {
+      stripeCustomerId = subscriptions[0].stripe_customer_id;
+    } else {
+      // Create new Stripe customer
+      const customer = await stripe.customers.create({
+        email: email,
+        name: name,
+        metadata: {
+          learner_id: String(learnerId)
+        }
+      });
+      stripeCustomerId = customer.id;
+
+      // Save to database
+      // If subscription record exists but no stripe_id, update it. 
+      // If no record exists, insert new one with 'free' status.
+      await sql`
+        INSERT INTO learner_subscription (
+          learner_id, stripe_customer_id, status, plan_id
+        ) VALUES (
+          ${learnerId}, ${stripeCustomerId}, 'free', 'free'
+        )
+        ON CONFLICT (learner_id) 
+        DO UPDATE SET
+          stripe_customer_id = ${stripeCustomerId},
+          updated_at = NOW()
+      `;
+    }
+
+    // 2. Create SetupIntent
+    const setupIntent = await stripe.setupIntents.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+    });
+
+    return res.status(200).json({
+      clientSecret: setupIntent.client_secret,
+      customerId: stripeCustomerId
+    });
+
+  } catch (error) {
+    console.error('Error creating SetupIntent:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 
