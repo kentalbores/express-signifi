@@ -50,7 +50,7 @@ const getAllCourseModules = async (req, res) => {
             `;
         }
         
-        res.status(200).json({ message: 'Modules retrieved successfully', modules });
+        res.status(200).json({ message: 'Modules retrieved successfully', data: modules });
     } catch (error) {
         console.error('Error fetching modules:', error);
         res.status(500).json({ error: 'Internal server error' });

@@ -685,10 +685,143 @@ const deleteCourse = async (req, res) => {
     }
 };
 
+// Get download manifest for offline course access (Premium only)
+const getDownloadManifest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user?.userId || req.user?.user_id;
+
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ error: 'Invalid course ID' });
+        }
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        // Check if user has premium subscription
+        const subscription = await sql`
+            SELECT s.*, sp.tier_name, sp.download_courses_allowed
+            FROM subscription s
+            JOIN subscription_plan sp ON s.plan_id = sp.plan_id
+            WHERE s.user_id = ${userId}
+            AND s.status = 'active'
+            AND s.end_date > NOW()
+            ORDER BY s.created_at DESC
+            LIMIT 1
+        `;
+
+        const isPremium = subscription.length > 0 && subscription[0].download_courses_allowed;
+
+        if (!isPremium) {
+            return res.status(403).json({
+                error: 'Premium subscription required',
+                message: 'Offline downloads are only available for Premium subscribers.'
+            });
+        }
+
+        // Check if user is enrolled in this course
+        const enrollment = await sql`
+            SELECT enrollment_id, status FROM enrollment
+            WHERE learner_id = ${userId} AND course_id = ${id}
+            AND status IN ('active', 'completed')
+        `;
+
+        if (enrollment.length === 0) {
+            return res.status(403).json({
+                error: 'Enrollment required',
+                message: 'You must be enrolled in this course to download it.'
+            });
+        }
+
+        // Get course details
+        const course = await sql`
+            SELECT course_id, title, description, thumbnail_image_url
+            FROM course WHERE course_id = ${id}
+        `;
+
+        if (course.length === 0) {
+            return res.status(404).json({ error: 'Course not found' });
+        }
+
+        // Get all modules for this course
+        const modules = await sql`
+            SELECT module_id, title, description, order_index
+            FROM coursemodule WHERE course_id = ${id}
+            ORDER BY order_index ASC
+        `;
+
+        // Get all downloadable lessons with their content URLs
+        const lessons = await sql`
+            SELECT 
+                l.lesson_id, l.module_id, l.title, l.description, 
+                l.lesson_type, l.order_index, l.estimated_duration_minutes,
+                l.streaming_url, l.video_url, l.file_path, l.file_size,
+                l.mime_type, l.is_downloadable
+            FROM lesson l
+            JOIN coursemodule cm ON l.module_id = cm.module_id
+            WHERE cm.course_id = ${id}
+            AND l.is_active = true
+            ORDER BY cm.order_index ASC, l.order_index ASC
+        `;
+
+        // Build manifest with download URLs
+        const downloadableContent = [];
+        let totalSize = 0;
+
+        for (const lesson of lessons) {
+            const downloadUrl = lesson.streaming_url || lesson.video_url || lesson.file_path;
+            
+            if (downloadUrl) {
+                downloadableContent.push({
+                    lesson_id: lesson.lesson_id,
+                    module_id: lesson.module_id,
+                    title: lesson.title,
+                    lesson_type: lesson.lesson_type,
+                    download_url: downloadUrl,
+                    file_size: lesson.file_size || 0,
+                    mime_type: lesson.mime_type || 'application/octet-stream',
+                    estimated_duration_minutes: lesson.estimated_duration_minutes
+                });
+                totalSize += lesson.file_size || 0;
+            }
+        }
+
+        // Add thumbnail to manifest if exists
+        if (course[0].thumbnail_image_url) {
+            downloadableContent.unshift({
+                type: 'thumbnail',
+                download_url: course[0].thumbnail_image_url,
+                file_size: 0
+            });
+        }
+
+        res.json({
+            success: true,
+            manifest: {
+                course_id: course[0].course_id,
+                course_title: course[0].title,
+                course_description: course[0].description,
+                thumbnail_url: course[0].thumbnail_image_url,
+                total_modules: modules.length,
+                total_lessons: lessons.length,
+                total_size_bytes: totalSize,
+                modules: modules,
+                downloadable_content: downloadableContent,
+                generated_at: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error generating download manifest:', error);
+        res.status(500).json({ error: 'Failed to generate download manifest' });
+    }
+};
+
 module.exports = {
     createCourse,
     getAllCourses,
     getCourseById,
     updateCourse,
-    deleteCourse
+    deleteCourse,
+    getDownloadManifest
 };
