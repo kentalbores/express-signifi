@@ -72,22 +72,14 @@ module.exports.createCoursePayment = async (req, res) => {
     if (amount === 0) {
       // Complete order
       await sql`UPDATE course_order SET status = ${'completed'} WHERE order_id = ${orderId}`;
-      // Record zero-amount transaction
-      await sql`
-        INSERT INTO payment_transaction (
-          order_id, payment_gateway, gateway_transaction_id, payment_method,
-          amount, currency, status, gateway_response, completed_at
-        ) VALUES (
-          ${orderId}, ${'free'}, ${null}, ${'none'},
-          ${0}, ${(STRIPE_CURRENCY || 'usd').toUpperCase()}, ${'completed'}, ${null}, NOW()
-        )
-      `;
+      // Note: Skipping payment_transaction insert for free courses (amount must be > 0 per DB constraint)
+      
       // Ensure enrollment
       const existing = await sql`
         SELECT enrollment_id FROM enrollment WHERE learner_id = ${learnerId} AND course_id = ${course.course_id} LIMIT 1
       `;
       if (existing.length === 0) {
-        await sql`INSERT INTO enrollment (learner_id, course_id, status) VALUES (${learnerId}, ${course.course_id}, ${'active'})`;
+        await sql`INSERT INTO enrollment (learner_id, course_id, status) VALUES (${learnerId}, ${course.course_id}, ${'active'})`; 
       }
       return res.status(201).json({
         clientSecret: null,
