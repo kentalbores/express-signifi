@@ -223,6 +223,15 @@ const sql = require('../../config/database');
  *               $ref: '#/components/schemas/Error'
  */
 
+// Import download manifest and institution courses controllers
+const { getDownloadManifest, getMyInstitutionCourses } = require('../../controllers/course/courseController');
+
+// IMPORTANT: All specific named routes MUST come before parameterized routes (/:id)
+// to prevent Express from matching "my-institution" as an ID
+
+// My institution courses route - MUST be first to avoid /:id catching it
+router.get('/my-institution', authenticateToken, getMyInstitutionCourses);  // GET /api/courses/my-institution
+
 // Public course routes (no authentication required)
 router.get('/published', async (req, res) => { // GET /api/courses/published
   try {
@@ -232,6 +241,7 @@ router.get('/published', async (req, res) => { // GET /api/courses/published
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 router.get('/search', async (req, res) => { // GET /api/courses/search?q=
   try {
     const q = String(req.query.q || '').trim();
@@ -243,21 +253,15 @@ router.get('/search', async (req, res) => { // GET /api/courses/search?q=
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Parameterized routes (must come after ALL specific named paths)
 router.get('/:id', getCourseById);     // GET /api/courses/:id - Get course by ID (public)
+router.get('/:id/download-manifest', authenticateToken, getDownloadManifest);  // GET /api/courses/:id/download-manifest
 
 // Protected course routes with validation
 router.post('/', authenticateToken, requireEducator, validate(schemas.course.create), createCourse);         // POST /api/courses - Create new course (educators only)
 router.get('/', authenticateToken, validate(schemas.query.courseFilters, 'query'), getAllCourses);        // GET /api/courses - Get all courses (authenticated users)
 router.put('/:id', authenticateToken, requireEducator, validate(schemas.params.id, 'params'), validate(schemas.course.update), updateCourse);      // PUT /api/courses/:id - Update course (educators only)
 router.delete('/:id', authenticateToken, requireAdminRole, validate(schemas.params.id, 'params'), deleteCourse);   // DELETE /api/courses/:id - Delete course (admins only)
-
-// Import download manifest and institution courses controllers
-const { getDownloadManifest, getMyInstitutionCourses } = require('../../controllers/course/courseController');
-
-// My institution courses route (authenticated learners)
-router.get('/my-institution', authenticateToken, getMyInstitutionCourses);  // GET /api/courses/my-institution
-
-// Download manifest route (Premium only, authenticated)
-router.get('/:id/download-manifest', authenticateToken, getDownloadManifest);  // GET /api/courses/:id/download-manifest
 
 module.exports = router;
