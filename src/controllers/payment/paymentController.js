@@ -165,7 +165,8 @@ module.exports.createCoursePayment = async (req, res) => {
     }
   } catch (error) {
     console.error('Error creating PaymentIntent:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Error details:', error.message, error.stack);
+    return res.status(500).json({ error: 'Internal server error', detail: error.message });
   }
 };
 
