@@ -174,7 +174,7 @@ const {
     markLessonComplete,
     getLessonProgress
 } = require('../../controllers/lesson/lessonController');
-const { authenticate } = require('../../middleware/authenticate');
+const { authenticate } = require('../../middleware/auth');
 
 // Lesson routes
 router.post('/', createLesson);           // POST /api/lessons
