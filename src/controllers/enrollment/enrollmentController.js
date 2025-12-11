@@ -517,8 +517,8 @@ const checkEnrollment = async (req, res) => {
             return res.status(400).json({ error: 'Invalid or missing course_id parameter' });
         }
 
-        // Get authenticated user's ID from token
-        const learnerId = req.user?.userId;
+        // Get authenticated user's ID from token (supports both userId and user_id)
+        const learnerId = req.user?.user_id || req.user?.userId;
         if (!learnerId) {
             return res.status(401).json({ error: 'User not authenticated' });
         }
