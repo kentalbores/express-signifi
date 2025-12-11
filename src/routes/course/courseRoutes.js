@@ -4,6 +4,7 @@ const {
     createCourse,
     getAllCourses,
     getCourseById,
+    getCourseByIdFull,
     updateCourse,
     deleteCourse
 } = require('../../controllers/course/courseController');
@@ -235,9 +236,15 @@ router.get('/my-institution', authenticateToken, getMyInstitutionCourses);  // G
 // Public course routes (no authentication required)
 router.get('/published', async (req, res) => { // GET /api/courses/published
   try {
-    const rows = await sql`SELECT course_id, title, description, price, is_published, created_at FROM course WHERE is_published = true ORDER BY created_at DESC`;
+    const rows = await sql`
+      SELECT course_id, title, description, price, is_published, created_at 
+      FROM course 
+      WHERE is_published = true AND is_active = true 
+      ORDER BY created_at DESC
+    `;
     res.json(rows);
   } catch (e) {
+    console.error('Error fetching published courses:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -247,14 +254,22 @@ router.get('/search', async (req, res) => { // GET /api/courses/search?q=
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
     const like = `%${q}%`;
-    const rows = await sql`SELECT course_id, title, description, price, is_published, created_at FROM course WHERE is_published = true AND (title ILIKE ${like} OR description ILIKE ${like}) ORDER BY created_at DESC`;
+    const rows = await sql`
+      SELECT course_id, title, description, price, is_published, created_at 
+      FROM course 
+      WHERE is_published = true AND is_active = true 
+        AND (title ILIKE ${like} OR description ILIKE ${like}) 
+      ORDER BY created_at DESC
+    `;
     res.json(rows);
   } catch (e) {
+    console.error('Error searching courses:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Parameterized routes (must come after ALL specific named paths)
+router.get('/:id/full', getCourseByIdFull);  // GET /api/courses/:id/full - Get course with full nested structure (public)
 router.get('/:id', getCourseById);     // GET /api/courses/:id - Get course by ID (public)
 router.get('/:id/download-manifest', authenticateToken, getDownloadManifest);  // GET /api/courses/:id/download-manifest
 

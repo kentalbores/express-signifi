@@ -37,16 +37,19 @@ const getAllCourseModules = async (req, res) => {
         let modules;
         if (course_id) {
             modules = await sql`
-                SELECT module_id, course_id, title, description 
+                SELECT module_id, course_id, title, description, order_index, 
+                       estimated_duration_hours, is_active, is_preview, created_at
                 FROM coursemodule
-                WHERE course_id = ${course_id}
-                ORDER BY module_id DESC
+                WHERE course_id = ${course_id} AND is_active = true
+                ORDER BY order_index ASC
             `;
         } else {
             modules = await sql`
-                SELECT module_id, course_id, title, description 
+                SELECT module_id, course_id, title, description, order_index, 
+                       estimated_duration_hours, is_active, is_preview, created_at
                 FROM coursemodule
-                ORDER BY module_id DESC
+                WHERE is_active = true
+                ORDER BY order_index ASC
             `;
         }
         
@@ -64,7 +67,10 @@ const getCourseModuleById = async (req, res) => {
         if (!id || isNaN(id)) return res.status(400).json({ error: 'Invalid module ID' });
 
         const result = await sql`
-            SELECT module_id, course_id, title, description FROM coursemodule WHERE module_id = ${id}
+            SELECT module_id, course_id, title, description, order_index, 
+                   estimated_duration_hours, is_active, is_preview, created_at
+            FROM coursemodule 
+            WHERE module_id = ${id} AND is_active = true
         `;
         if (result.length === 0) return res.status(404).json({ error: 'Module not found' });
         res.status(200).json({ message: 'Module retrieved successfully', module: result[0] });

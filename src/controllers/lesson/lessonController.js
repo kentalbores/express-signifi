@@ -93,11 +93,15 @@ const getAllLessons = async (req, res) => {
         let whereClause = sql``;
         const conditions = [];
         
-        if (module_id) {
-            conditions.push(sql`module_id = ${module_id}`);
-        }
+        // Default to active lessons if not specified
         if (is_active !== undefined) {
             conditions.push(sql`is_active = ${is_active === 'true'}`);
+        } else {
+            conditions.push(sql`is_active = true`);
+        }
+        
+        if (module_id) {
+            conditions.push(sql`module_id = ${module_id}`);
         }
         if (lesson_type) {
             conditions.push(sql`lesson_type = ${lesson_type}`);
@@ -121,7 +125,7 @@ const getAllLessons = async (req, res) => {
                    mime_type, is_downloadable, streaming_url, video_metadata, created_at, updated_at
             FROM lesson
             ${whereClause}
-            ORDER BY order_index ASC, lesson_id DESC
+            ORDER BY order_index ASC
         `;
         
         res.status(200).json({ message: 'Lessons retrieved successfully', data: lessons });
@@ -143,7 +147,7 @@ const getLessonById = async (req, res) => {
                    is_active, is_preview, requires_completion, passing_score, max_attempts,
                    material_type, original_filename, stored_filename, file_path, file_size,
                    mime_type, is_downloadable, streaming_url, video_metadata, created_at, updated_at
-            FROM lesson WHERE lesson_id = ${id}
+            FROM lesson WHERE lesson_id = ${id} AND is_active = true
         `;
         if (result.length === 0) return res.status(404).json({ error: 'Lesson not found' });
         res.status(200).json({ message: 'Lesson retrieved successfully', lesson: result[0] });

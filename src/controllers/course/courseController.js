@@ -234,6 +234,9 @@ const getAllCourses = async (req, res) => {
         let whereClause = sql``;
         const conditions = [];
         
+        // Always filter by is_active = true
+        conditions.push(sql`c.is_active = true`);
+        
         if (is_published !== undefined) {
             conditions.push(sql`c.is_published = ${is_published === 'true'}`);
         }
@@ -321,7 +324,7 @@ const getAllCourses = async (req, res) => {
     }
 };
 
-// Get course by ID with complete details
+// Get course by ID with complete details (includes stats but not full nested structure)
 const getCourseById = async (req, res) => {
     try {
         const { id } = req.params;
@@ -350,7 +353,7 @@ const getCourseById = async (req, res) => {
             LEFT JOIN useraccount u ON c.educator_id = u.user_id
             LEFT JOIN institution i ON c.institution_id = i.institution_id
             LEFT JOIN course_category cc ON c.category_id = cc.category_id
-            WHERE c.course_id = ${id}
+            WHERE c.course_id = ${id} AND c.is_active = true
         `;
 
         if (result.length === 0) {
@@ -395,6 +398,93 @@ const getCourseById = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching course:', error);
+        res.status(500).json({
+            error: 'Internal server error'
+        });
+    }
+};
+
+// Get course by ID with full nested modules and lessons structure (for mobile app)
+const getCourseByIdFull = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id || isNaN(id)) {
+            return res.status(400).json({
+                error: 'Invalid course ID'
+            });
+        }
+
+        // 1. Get course
+        const courseResult = await sql`
+            SELECT c.course_id, c.educator_id, c.institution_id, c.category_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url, c.promo_video_url,
+                   c.price, c.discounted_price, c.currency, c.difficulty_level, 
+                   c.estimated_duration_hours, c.language, c.requirements, c.what_you_will_learn,
+                   c.target_audience, c.is_published, c.is_active, c.is_featured,
+                   c.enrollment_count, c.average_rating, c.total_reviews, c.last_updated,
+                   c.published_at, c.created_at, c.updated_at,
+                   (u.first_name || ' ' || u.last_name) as educator_name, 
+                   u.email as educator_email, u.profile_picture_url as educator_avatar,
+                   i.name as institution_name, i.email as institution_email,
+                   i.website as institution_website, i.logo_url as institution_logo,
+                   cc.name as category_name, cc.slug as category_slug,
+                   cc.description as category_description, cc.icon_url as category_icon
+            FROM course c
+            LEFT JOIN useraccount u ON c.educator_id = u.user_id
+            LEFT JOIN institution i ON c.institution_id = i.institution_id
+            LEFT JOIN course_category cc ON c.category_id = cc.category_id
+            WHERE c.course_id = ${id} AND c.is_active = true
+        `;
+
+        if (courseResult.length === 0) {
+            return res.status(404).json({
+                error: 'Course not found'
+            });
+        }
+
+        // 2. Get modules (ordered by order_index ASC)
+        const modules = await sql`
+            SELECT module_id, course_id, title, description, order_index, 
+                   estimated_duration_hours, is_active, is_preview, created_at
+            FROM coursemodule 
+            WHERE course_id = ${id} AND is_active = true 
+            ORDER BY order_index ASC
+        `;
+
+        // 3. Get lessons for all modules (ordered by order_index ASC)
+        const moduleIds = modules.map(m => m.module_id);
+        let lessons = [];
+        if (moduleIds.length > 0) {
+            lessons = await sql`
+                SELECT lesson_id, module_id, title, description, content, video_url, 
+                       streaming_url, lesson_type, order_index, estimated_duration_minutes,
+                       video_duration_seconds, is_active, is_preview, is_downloadable,
+                       requires_completion, passing_score, max_attempts, file_path,
+                       original_filename, stored_filename, file_size, mime_type,
+                       video_metadata, created_at, updated_at
+                FROM lesson 
+                WHERE module_id = ANY(${moduleIds}) AND is_active = true 
+                ORDER BY order_index ASC
+            `;
+        }
+
+        // 4. Nest lessons into modules
+        const modulesWithLessons = modules.map(module => ({
+            ...module,
+            lessons: lessons
+                .filter(lesson => lesson.module_id === module.module_id)
+                .sort((a, b) => a.order_index - b.order_index)
+        }));
+
+        res.status(200).json({
+            success: true,
+            course: courseResult[0],
+            modules: modulesWithLessons
+        });
+
+    } catch (error) {
+        console.error('Error fetching course with full structure:', error);
         res.status(500).json({
             error: 'Internal server error'
         });
@@ -878,6 +968,7 @@ module.exports = {
     createCourse,
     getAllCourses,
     getCourseById,
+    getCourseByIdFull,
     updateCourse,
     deleteCourse,
     getDownloadManifest,
