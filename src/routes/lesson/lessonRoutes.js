@@ -174,7 +174,7 @@ const {
     markLessonComplete,
     getLessonProgress
 } = require('../../controllers/lesson/lessonController');
-const { authenticate } = require('../../middleware/auth');
+const { authenticateToken } = require('../../middleware/auth');
 
 // Lesson routes
 router.post('/', createLesson);           // POST /api/lessons
@@ -184,8 +184,8 @@ router.put('/:id', updateLesson);         // PUT /api/lessons/:id
 router.delete('/:id', deleteLesson);      // DELETE /api/lessons/:id
 
 // Lesson progress routes (authenticated)
-router.post('/:id/complete', authenticate, markLessonComplete);  // POST /api/lessons/:id/complete
-router.get('/:id/progress', authenticate, getLessonProgress);    // GET /api/lessons/:id/progress
+router.post('/:id/complete', authenticateToken, markLessonComplete);  // POST /api/lessons/:id/complete
+router.get('/:id/progress', authenticateToken, getLessonProgress);    // GET /api/lessons/:id/progress
 
 module.exports = router;
 
