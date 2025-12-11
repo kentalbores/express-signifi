@@ -170,8 +170,11 @@ const {
     getAllLessons,
     getLessonById,
     updateLesson,
-    deleteLesson
+    deleteLesson,
+    markLessonComplete,
+    getLessonProgress
 } = require('../../controllers/lesson/lessonController');
+const { authenticate } = require('../../middleware/authenticate');
 
 // Lesson routes
 router.post('/', createLesson);           // POST /api/lessons
@@ -179,6 +182,10 @@ router.get('/', getAllLessons);           // GET /api/lessons
 router.get('/:id', getLessonById);        // GET /api/lessons/:id
 router.put('/:id', updateLesson);         // PUT /api/lessons/:id
 router.delete('/:id', deleteLesson);      // DELETE /api/lessons/:id
+
+// Lesson progress routes (authenticated)
+router.post('/:id/complete', authenticate, markLessonComplete);  // POST /api/lessons/:id/complete
+router.get('/:id/progress', authenticate, getLessonProgress);    // GET /api/lessons/:id/progress
 
 module.exports = router;
 

@@ -36,12 +36,84 @@ async function updateLearnerProfile(req, res) {
 async function getLearnerProgress(req, res) {
   try {
     const userId = req.user.user_id;
-    const rows = await sql`SELECT total_progress_percentage, status, last_session FROM learner WHERE user_id = ${userId}`;
-    res.json(rows[0] || { total_progress_percentage: 0, status: 'active' });
+    
+    // Get current learner data including streak
+    const rows = await sql`
+      SELECT total_progress_percentage, status, last_session, 
+             learning_streak, longest_streak, total_points, level
+      FROM learner WHERE user_id = ${userId}
+    `;
+    
+    if (!rows.length) {
+      return res.json({ 
+        total_progress_percentage: 0, 
+        status: 'active',
+        learning_streak: 0,
+        longest_streak: 0
+      });
+    }
+    
+    const learner = rows[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const lastSession = learner.last_session ? new Date(learner.last_session) : null;
+    let learningStreak = learner.learning_streak || 0;
+    let longestStreak = learner.longest_streak || 0;
+    let shouldUpdate = false;
+    
+    if (lastSession) {
+      lastSession.setHours(0, 0, 0, 0);
+      const daysDiff = Math.floor((today - lastSession) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === 0) {
+        // Same day, no streak change needed
+      } else if (daysDiff === 1) {
+        // Consecutive day - increment streak
+        learningStreak++;
+        shouldUpdate = true;
+      } else if (daysDiff > 1) {
+        // Streak broken - reset to 1 for today
+        learningStreak = 1;
+        shouldUpdate = true;
+      }
+    } else {
+      // First session ever - start streak at 1
+      learningStreak = 1;
+      shouldUpdate = true;
+    }
+    
+    // Update longest streak if current exceeds it
+    if (learningStreak > longestStreak) {
+      longestStreak = learningStreak;
+      shouldUpdate = true;
+    }
+    
+    // Update learner record if changes occurred
+    if (shouldUpdate) {
+      await sql`
+        UPDATE learner
+        SET learning_streak = ${learningStreak},
+            longest_streak = ${longestStreak},
+            last_session = NOW()
+        WHERE user_id = ${userId}
+      `;
+    }
+    
+    res.json({
+      total_progress_percentage: learner.total_progress_percentage || 0,
+      status: learner.status || 'active',
+      learning_streak: learningStreak,
+      longest_streak: longestStreak,
+      total_points: learner.total_points || 0,
+      level: learner.level || 1
+    });
   } catch (e) {
+    console.error('Error in getLearnerProgress:', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
+
 
 // Enrollments
 async function listEnrollments(req, res) {

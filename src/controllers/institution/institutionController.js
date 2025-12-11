@@ -57,15 +57,32 @@ const createInstitution = async (req, res) => {
     }
 };
 
-// Get all institutions
-const getAllInstitutions = async (_req, res) => {
+// Get all institutions with optional search
+const getAllInstitutions = async (req, res) => {
     try {
-        const institutions = await sql`
-            SELECT institution_id, name, slug, email, contact_number, address, city, state, country, postal_code,
-                   website, logo_url, banner_image_url, description, accreditation_info, is_active, is_verified, created_at
-            FROM institution
-            ORDER BY created_at DESC
-        `;
+        const { search } = req.query;
+        
+        let institutions;
+        if (search && search.trim()) {
+            const searchTerm = `%${search.trim()}%`;
+            institutions = await sql`
+                SELECT institution_id, name, slug, email, contact_number, address, city, state, country, postal_code,
+                       website, logo_url, banner_image_url, description, accreditation_info, is_active, is_verified, created_at
+                FROM institution
+                WHERE (name ILIKE ${searchTerm} OR city ILIKE ${searchTerm} OR description ILIKE ${searchTerm})
+                  AND is_active = true
+                ORDER BY name ASC
+            `;
+        } else {
+            institutions = await sql`
+                SELECT institution_id, name, slug, email, contact_number, address, city, state, country, postal_code,
+                       website, logo_url, banner_image_url, description, accreditation_info, is_active, is_verified, created_at
+                FROM institution
+                WHERE is_active = true
+                ORDER BY created_at DESC
+            `;
+        }
+        
         res.status(200).json({
             message: 'Institutions retrieved successfully',
             institutions: institutions
