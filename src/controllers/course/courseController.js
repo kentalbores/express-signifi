@@ -699,19 +699,16 @@ const getDownloadManifest = async (req, res) => {
             return res.status(401).json({ error: 'Authentication required' });
         }
 
-        // Check if user has premium subscription
+        // Check if user has premium subscription (using learner_subscription table)
         const subscription = await sql`
-            SELECT s.*, sp.tier_name, sp.download_courses_allowed
-            FROM subscription s
-            JOIN subscription_plan sp ON s.plan_id = sp.plan_id
-            WHERE s.user_id = ${userId}
-            AND s.status = 'active'
-            AND s.end_date > NOW()
-            ORDER BY s.created_at DESC
+            SELECT * FROM learner_subscription 
+            WHERE learner_id = ${userId} 
             LIMIT 1
         `;
 
-        const isPremium = subscription.length > 0 && subscription[0].download_courses_allowed;
+        // Premium check: status must be 'active' or 'trialing'
+        const isPremium = subscription.length > 0 && 
+            (subscription[0].status === 'active' || subscription[0].status === 'trialing');
 
         if (!isPremium) {
             return res.status(403).json({
@@ -817,11 +814,72 @@ const getDownloadManifest = async (req, res) => {
     }
 };
 
+// Get courses from user's institution
+const getMyInstitutionCourses = async (req, res) => {
+    try {
+        const userId = req.user?.userId || req.user?.user_id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        // Get user's institution from learner table
+        const learner = await sql`
+            SELECT institution_id FROM learner WHERE user_id = ${userId}
+        `;
+
+        if (learner.length === 0 || !learner[0].institution_id) {
+            return res.status(200).json({
+                success: true,
+                message: 'User is not associated with any institution',
+                courses: [],
+                institution: null
+            });
+        }
+
+        const institutionId = learner[0].institution_id;
+
+        // Get institution details
+        const institution = await sql`
+            SELECT institution_id, name, logo_url FROM institution 
+            WHERE institution_id = ${institutionId}
+        `;
+
+        // Get courses from this institution
+        const courses = await sql`
+            SELECT c.course_id, c.educator_id, c.institution_id, c.title, c.slug,
+                   c.short_description, c.description, c.thumbnail_image_url,
+                   c.price, c.difficulty_level, c.is_published, c.average_rating,
+                   c.enrollment_count, c.created_at,
+                   u.first_name as educator_first_name, u.last_name as educator_last_name,
+                   i.name as institution_name
+            FROM course c
+            LEFT JOIN educator e ON c.educator_id = e.user_id
+            LEFT JOIN useraccount u ON e.user_id = u.user_id
+            LEFT JOIN institution i ON c.institution_id = i.institution_id
+            WHERE c.institution_id = ${institutionId}
+            AND c.is_published = true
+            ORDER BY c.created_at DESC
+        `;
+
+        res.status(200).json({
+            success: true,
+            institution: institution[0] || null,
+            courses
+        });
+
+    } catch (error) {
+        console.error('Error fetching institution courses:', error);
+        res.status(500).json({ error: 'Failed to fetch institution courses' });
+    }
+};
+
 module.exports = {
     createCourse,
     getAllCourses,
     getCourseById,
     updateCourse,
     deleteCourse,
-    getDownloadManifest
+    getDownloadManifest,
+    getMyInstitutionCourses
 };

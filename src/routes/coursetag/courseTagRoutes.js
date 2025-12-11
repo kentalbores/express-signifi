@@ -69,6 +69,7 @@ const { authenticateToken, requireAdminRole, requireEducator } = require('../../
 // Public routes
 router.get('/', getAllTags);
 router.get('/popular', getPopularTags);
+router.get('/course/:courseId', getCoursesTags);  // Get tags for a specific course
 router.get('/:id', getTagById);
 router.get('/:tagId/courses', getCoursesByTag);
 
