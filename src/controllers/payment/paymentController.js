@@ -33,9 +33,9 @@ module.exports.createCoursePayment = async (req, res) => {
       return res.status(400).json({ error: 'Invalid course_id' });
     }
 
-    // Fetch course and price
+    // Fetch course and price (including educator_id for Stripe Connect)
     const courses = await sql`
-      SELECT course_id, title, price, is_published
+      SELECT course_id, educator_id, title, price, is_published
       FROM course
       WHERE course_id = ${course_id}
     `;
