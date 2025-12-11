@@ -237,11 +237,17 @@ const getCoursesTags = async (req, res) => {
     try {
         const { courseId } = req.params;
 
+        // Validate courseId
+        if (!courseId || isNaN(courseId)) {
+            return res.status(400).json({ error: 'Invalid course ID' });
+        }
+
+        // Check if the course_tag_relations table exists and query tags
         const tags = await sql`
             SELECT t.tag_id, t.name, t.slug
             FROM course_tags t
             JOIN course_tag_relations ctr ON t.tag_id = ctr.tag_id
-            WHERE ctr.course_id = ${courseId}
+            WHERE ctr.course_id = ${parseInt(courseId)}
             ORDER BY t.name ASC
         `;
 
@@ -249,7 +255,21 @@ const getCoursesTags = async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching course tags:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        
+        // Handle specific database errors
+        if (error.code === '42P01') {
+            // Table does not exist
+            console.error('Table course_tag_relations or course_tags does not exist');
+            return res.status(200).json({ success: true, tags: [], message: 'Tags feature not available' });
+        }
+        
+        if (error.code === '42703') {
+            // Column does not exist
+            console.error('Column mismatch in course_tag tables');
+            return res.status(200).json({ success: true, tags: [], message: 'Tags feature not available' });
+        }
+        
+        res.status(500).json({ error: 'Failed to fetch course tags' });
     }
 };
 
