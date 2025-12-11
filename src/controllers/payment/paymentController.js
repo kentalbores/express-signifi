@@ -84,7 +84,7 @@ module.exports.createCoursePayment = async (req, res) => {
       `;
       // Ensure enrollment
       const existing = await sql`
-        SELECT enroll_id FROM enrollment WHERE learner_id = ${learnerId} AND course_id = ${course.course_id} LIMIT 1
+        SELECT enrollment_id FROM enrollment WHERE learner_id = ${learnerId} AND course_id = ${course.course_id} LIMIT 1
       `;
       if (existing.length === 0) {
         await sql`INSERT INTO enrollment (learner_id, course_id, status) VALUES (${learnerId}, ${course.course_id}, ${'active'})`;
@@ -226,7 +226,7 @@ module.exports.stripeWebhook = async (req, res) => {
 
         // 3) Idempotent enrollment creation
         const existing = await sql`
-          SELECT enroll_id FROM enrollment WHERE learner_id = ${learnerId} AND course_id = ${courseId} LIMIT 1
+          SELECT enrollment_id FROM enrollment WHERE learner_id = ${learnerId} AND course_id = ${courseId} LIMIT 1
         `;
         if (existing.length === 0) {
           try {
