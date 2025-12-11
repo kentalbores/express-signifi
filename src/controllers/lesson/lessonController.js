@@ -299,12 +299,217 @@ const deleteLesson = async (req, res) => {
     }
 };
 
+// Helper: Recalculate enrollment progress based on completed lessons
+const recalculateEnrollmentProgress = async (enrollmentId) => {
+    try {
+        // Get enrollment details
+        const enrollment = await sql`
+            SELECT e.enrollment_id, e.course_id, e.learner_id
+            FROM enrollment e
+            WHERE e.enrollment_id = ${enrollmentId}
+        `;
+        
+        if (!enrollment.length) return null;
+        
+        const { course_id, learner_id } = enrollment[0];
+        
+        // Count total lessons in course
+        const totalLessons = await sql`
+            SELECT COUNT(l.lesson_id) as total
+            FROM lesson l
+            JOIN coursemodule cm ON l.module_id = cm.module_id
+            WHERE cm.course_id = ${course_id} AND l.is_active = true AND l.requires_completion = true
+        `;
+        
+        // Count completed lessons for this enrollment
+        const completedLessons = await sql`
+            SELECT COUNT(DISTINCT la.lesson_id) as completed
+            FROM learning_activity la
+            JOIN lesson l ON la.lesson_id = l.lesson_id
+            JOIN coursemodule cm ON l.module_id = cm.module_id
+            WHERE la.enrollment_id = ${enrollmentId} 
+            AND la.status = 'completed'
+            AND cm.course_id = ${course_id}
+        `;
+        
+        const total = parseInt(totalLessons[0].total) || 1;
+        const completed = parseInt(completedLessons[0].completed) || 0;
+        const progressPercentage = Math.round((completed / total) * 100);
+        
+        // Update enrollment progress
+        await sql`
+            UPDATE enrollment 
+            SET completion_percentage = ${progressPercentage},
+                last_accessed = NOW(),
+                status = ${progressPercentage >= 100 ? 'completed' : 'active'},
+                completion_date = ${progressPercentage >= 100 ? sql`NOW()` : sql`NULL`}
+            WHERE enrollment_id = ${enrollmentId}
+        `;
+        
+        return { total, completed, progressPercentage };
+    } catch (error) {
+        console.error('Error recalculating enrollment progress:', error);
+        return null;
+    }
+};
+
+// Mark lesson as complete
+const markLessonComplete = async (req, res) => {
+    try {
+        const { id } = req.params; // lesson_id
+        const { enrollment_id, time_spent_seconds, video_watch_time_seconds } = req.body;
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ error: 'Invalid lesson ID' });
+        }
+
+        if (!enrollment_id || isNaN(enrollment_id)) {
+            return res.status(400).json({ error: 'Enrollment ID is required' });
+        }
+
+        // Verify enrollment belongs to user
+        const enrollment = await sql`
+            SELECT enrollment_id, course_id, learner_id 
+            FROM enrollment 
+            WHERE enrollment_id = ${enrollment_id} AND learner_id = ${userId}
+        `;
+
+        if (!enrollment.length) {
+            return res.status(403).json({ error: 'You are not enrolled in this course' });
+        }
+
+        // Verify lesson belongs to the course
+        const lesson = await sql`
+            SELECT l.lesson_id, l.module_id, cm.course_id
+            FROM lesson l
+            JOIN coursemodule cm ON l.module_id = cm.module_id
+            WHERE l.lesson_id = ${id}
+        `;
+
+        if (!lesson.length) {
+            return res.status(404).json({ error: 'Lesson not found' });
+        }
+
+        if (lesson[0].course_id !== enrollment[0].course_id) {
+            return res.status(400).json({ error: 'Lesson does not belong to the enrolled course' });
+        }
+
+        // Check if activity already exists
+        const existing = await sql`
+            SELECT activity_id, time_spent_seconds, video_watch_time_seconds
+            FROM learning_activity 
+            WHERE user_id = ${userId} 
+            AND lesson_id = ${id} 
+            AND enrollment_id = ${enrollment_id}
+        `;
+
+        let activity;
+        if (existing.length > 0) {
+            // Update existing activity
+            const currentTimeSpent = existing[0].time_spent_seconds || 0;
+            const currentVideoTime = existing[0].video_watch_time_seconds || 0;
+            
+            activity = await sql`
+                UPDATE learning_activity
+                SET status = 'completed',
+                    progress_percentage = 100,
+                    time_spent_seconds = ${currentTimeSpent + (time_spent_seconds || 0)},
+                    video_watch_time_seconds = ${currentVideoTime + (video_watch_time_seconds || 0)},
+                    completed_at = NOW(),
+                    last_accessed = NOW()
+                WHERE activity_id = ${existing[0].activity_id}
+                RETURNING *
+            `;
+        } else {
+            // Create new activity
+            activity = await sql`
+                INSERT INTO learning_activity (
+                    user_id, lesson_id, enrollment_id, status, progress_percentage,
+                    time_spent_seconds, video_watch_time_seconds, completed_at, last_accessed
+                )
+                VALUES (
+                    ${userId}, ${id}, ${enrollment_id}, 'completed', 100,
+                    ${time_spent_seconds || 0}, ${video_watch_time_seconds || 0}, NOW(), NOW()
+                )
+                RETURNING *
+            `;
+        }
+
+        // Recalculate enrollment progress
+        const progress = await recalculateEnrollmentProgress(enrollment_id);
+
+        // Update current lesson in enrollment
+        await sql`
+            UPDATE enrollment 
+            SET current_lesson_id = ${id}
+            WHERE enrollment_id = ${enrollment_id}
+        `;
+
+        res.json({ 
+            success: true, 
+            message: 'Lesson marked as complete',
+            activity: activity[0],
+            enrollment_progress: progress
+        });
+    } catch (error) {
+        console.error('Error marking lesson complete:', error);
+        res.status(500).json({ error: 'Failed to mark lesson complete' });
+    }
+};
+
+// Get lesson progress for authenticated user
+const getLessonProgress = async (req, res) => {
+    try {
+        const { id } = req.params; // lesson_id
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Authentication required' });
+        }
+
+        if (!id || isNaN(id)) {
+            return res.status(400).json({ error: 'Invalid lesson ID' });
+        }
+
+        const activity = await sql`
+            SELECT la.*, e.course_id
+            FROM learning_activity la
+            JOIN enrollment e ON la.enrollment_id = e.enrollment_id
+            WHERE la.lesson_id = ${id} AND la.user_id = ${userId}
+            ORDER BY la.last_accessed DESC
+            LIMIT 1
+        `;
+
+        if (!activity.length) {
+            return res.json({ 
+                success: true,
+                progress: { status: 'not_started', progress_percentage: 0 }
+            });
+        }
+
+        res.json({ 
+            success: true,
+            progress: activity[0]
+        });
+    } catch (error) {
+        console.error('Error fetching lesson progress:', error);
+        res.status(500).json({ error: 'Failed to fetch lesson progress' });
+    }
+};
+
 module.exports = {
     createLesson,
     getAllLessons,
     getLessonById,
     updateLesson,
-    deleteLesson
+    deleteLesson,
+    markLessonComplete,
+    getLessonProgress
 };
 
 
