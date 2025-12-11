@@ -251,4 +251,10 @@ router.get('/', authenticateToken, validate(schemas.query.courseFilters, 'query'
 router.put('/:id', authenticateToken, requireEducator, validate(schemas.params.id, 'params'), validate(schemas.course.update), updateCourse);      // PUT /api/courses/:id - Update course (educators only)
 router.delete('/:id', authenticateToken, requireAdminRole, validate(schemas.params.id, 'params'), deleteCourse);   // DELETE /api/courses/:id - Delete course (admins only)
 
+// Import download manifest controller
+const { getDownloadManifest } = require('../../controllers/course/courseController');
+
+// Download manifest route (Premium only, authenticated)
+router.get('/:id/download-manifest', authenticateToken, getDownloadManifest);  // GET /api/courses/:id/download-manifest
+
 module.exports = router;

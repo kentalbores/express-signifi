@@ -124,7 +124,7 @@ const getAllLessons = async (req, res) => {
             ORDER BY order_index ASC, lesson_id DESC
         `;
         
-        res.status(200).json({ message: 'Lessons retrieved successfully', lessons });
+        res.status(200).json({ message: 'Lessons retrieved successfully', data: lessons });
     } catch (error) {
         console.error('Error fetching lessons:', error);
         res.status(500).json({ error: 'Internal server error' });
