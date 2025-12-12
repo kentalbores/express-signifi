@@ -353,11 +353,10 @@ const {
   upsertActivity,
   listAttempts,
   submitAttempt,
-  listNotifications,
-  markAllNotifications,
   markNotification,
   listMinigameAttempts,
   submitMinigameAttempt,
+  savePushToken,
 } = require('../../controllers/learner/learnerController');
 const { authenticateToken, requireLearner } = require('../../middleware/auth');
 
@@ -389,6 +388,7 @@ router.post('/attempts', learnerAuth, submitAttempt);
 router.get('/notifications', learnerAuth, listNotifications);
 router.post('/notifications/read-all', learnerAuth, markAllNotifications);
 router.post('/notifications/:notificationId/read', learnerAuth, markNotification);
+router.post('/push-token', learnerAuth, savePushToken);
 
 // Minigames (must be before /:id routes)
 router.get('/minigames/attempts', learnerAuth, listMinigameAttempts);

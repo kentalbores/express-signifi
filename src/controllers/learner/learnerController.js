@@ -2,6 +2,33 @@ const sql = require('../../config/database');
 
 // Get current user ID from JWT token (set by authenticateToken middleware)
 
+// Get current user ID from JWT token (set by authenticateToken middleware)
+
+async function savePushToken(req, res) {
+  try {
+    const userId = req.user.user_id;
+    const { token, platform } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const saved = await sql`
+      INSERT INTO user_push_token (user_id, token, platform)
+      VALUES (${userId}, ${token}, ${platform || 'unknown'})
+      ON CONFLICT (token) DO UPDATE 
+      SET user_id = EXCLUDED.user_id, 
+          platform = EXCLUDED.platform,
+          updated_at = NOW()
+      RETURNING token_id, user_id, token, platform, created_at`;
+
+    res.status(200).json(saved[0]);
+  } catch (e) {
+    console.error('Error saving push token:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 // Profile
 async function getLearnerProfile(req, res) {
   try {
@@ -36,36 +63,36 @@ async function updateLearnerProfile(req, res) {
 async function getLearnerProgress(req, res) {
   try {
     const userId = req.user.user_id;
-    
+
     // Get current learner data including streak
     const rows = await sql`
       SELECT total_progress_percentage, status, last_session, 
              learning_streak, longest_streak, total_points, level
       FROM learner WHERE user_id = ${userId}
     `;
-    
+
     if (!rows.length) {
-      return res.json({ 
-        total_progress_percentage: 0, 
+      return res.json({
+        total_progress_percentage: 0,
         status: 'active',
         learning_streak: 0,
         longest_streak: 0
       });
     }
-    
+
     const learner = rows[0];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const lastSession = learner.last_session ? new Date(learner.last_session) : null;
     let learningStreak = learner.learning_streak || 0;
     let longestStreak = learner.longest_streak || 0;
     let shouldUpdate = false;
-    
+
     if (lastSession) {
       lastSession.setHours(0, 0, 0, 0);
       const daysDiff = Math.floor((today - lastSession) / (1000 * 60 * 60 * 24));
-      
+
       if (daysDiff === 0) {
         // Same day, no streak change needed
       } else if (daysDiff === 1) {
@@ -82,13 +109,13 @@ async function getLearnerProgress(req, res) {
       learningStreak = 1;
       shouldUpdate = true;
     }
-    
+
     // Update longest streak if current exceeds it
     if (learningStreak > longestStreak) {
       longestStreak = learningStreak;
       shouldUpdate = true;
     }
-    
+
     // Update learner record if changes occurred
     if (shouldUpdate) {
       await sql`
@@ -99,7 +126,7 @@ async function getLearnerProgress(req, res) {
         WHERE user_id = ${userId}
       `;
     }
-    
+
     res.json({
       total_progress_percentage: learner.total_progress_percentage || 0,
       status: learner.status || 'active',
@@ -136,7 +163,7 @@ async function listEnrollments(req, res) {
       column: e.column_name,
       userId: req.user?.user_id
     });
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
       detail: process.env.NODE_ENV === 'development' ? e.message : undefined
     });
@@ -162,7 +189,7 @@ async function getEnrollmentProgress(req, res) {
   try {
     const userId = req.user.user_id;
     const { courseId } = req.params;
-    
+
     // First try to get data from learning_activity table
     let rows = [];
     try {
@@ -180,7 +207,7 @@ async function getEnrollmentProgress(req, res) {
         detail: activityError.detail,
         hint: 'Trying alternative query'
       });
-      
+
       // Fallback: Try to get basic lesson count
       try {
         const lessonCount = await sql`
@@ -188,9 +215,9 @@ async function getEnrollmentProgress(req, res) {
           FROM lesson l
           JOIN coursemodule cm ON l.module_id = cm.module_id
           WHERE cm.course_id = ${courseId}`;
-        
-        return res.json({ 
-          progress_perc: 0, 
+
+        return res.json({
+          progress_perc: 0,
           status: 'not_started',
           total_lessons: parseInt(lessonCount[0]?.total || 0),
           message: 'No activity data available'
@@ -200,9 +227,9 @@ async function getEnrollmentProgress(req, res) {
         throw fallbackError;
       }
     }
-    
+
     // naive aggregation demo:
-    const progress_perc = rows.length ? Math.min(100, Math.round((rows.filter(r=>r.status==='completed').length / rows.length) * 100)) : 0;
+    const progress_perc = rows.length ? Math.min(100, Math.round((rows.filter(r => r.status === 'completed').length / rows.length) * 100)) : 0;
     res.json({ progress_perc, status: progress_perc === 100 ? 'completed' : 'ongoing' });
   } catch (e) {
     console.error('Error fetching enrollment progress:', {
@@ -215,7 +242,7 @@ async function getEnrollmentProgress(req, res) {
       userId: req.user?.user_id,
       courseId: req.params?.courseId
     });
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Internal server error',
       detail: process.env.NODE_ENV === 'development' ? e.message : undefined
     });
@@ -389,7 +416,7 @@ async function createLearner(req, res) {
 async function getAllLearners(req, res) {
   try {
     const { status, student_id } = req.query;
-    
+
     let query = sql`
       SELECT l.*, u.first_name, u.last_name, u.email, u.profile_picture_url,
              u.created_at as user_created_at
@@ -397,7 +424,7 @@ async function getAllLearners(req, res) {
       JOIN useraccount u ON l.user_id = u.user_id
       WHERE 1=1
     `;
-    
+
     if (status) {
       query = sql`
         SELECT l.*, u.first_name, u.last_name, u.email, u.profile_picture_url,
@@ -407,7 +434,7 @@ async function getAllLearners(req, res) {
         WHERE l.status = ${status}
       `;
     }
-    
+
     if (student_id) {
       query = sql`
         SELECT l.*, u.first_name, u.last_name, u.email, u.profile_picture_url,
@@ -591,6 +618,7 @@ module.exports = {
   markNotification,
   listMinigameAttempts,
   submitMinigameAttempt,
+  savePushToken,
 };
 
 
